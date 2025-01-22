@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Форма авторизации</title>
+</head>
+
+<body>
+  <form action="<%= data.url %>" method="POST">
+    <label for="login">Логин:</label>
+    <label for="loginValidationError"><br>
+      <input type="text" id="login" name="login"><% if (data.loginValidationError) { %> <%= data.loginValidationError %> <% }  %><br>
+      <label for="password">Пароль:</label><label for="passwordValidationError"><% if (data.passwordValidationError) { %> <%= data.passwordValidationError %> <% }  %></label><br>
+      <input type="password" id="password" name="password"><br>
+      <input type="submit" value="Войти"><br>
+      <% if (data.errorMessage) { %><label> <%= data.errorMessage %> </label> <% }  %>
+  </form>
+</body>
