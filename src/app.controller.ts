@@ -82,6 +82,16 @@ class DOAPI {
   }
 }
 
+function Intent(intendId?: string) {
+  return (target: Object, propertyKey: string | symbol) => {
+    if (intendId) {
+      Reflect.defineMetadata('intentId', intendId, target, propertyKey);
+    } else {
+      Reflect.defineMetadata('intentId', 'root', target, propertyKey);
+    } { }
+  }
+}
+
 class SkillMissingAccessTokenException extends UnauthorizedException {
   constructor(public message: string, public statusCode?: number) {
     super(message);
@@ -95,7 +105,6 @@ class SkillInvalidAccessTokenException extends UnauthorizedException {
     this.statusCode = statusCode;
   }
 }
-
 
 class SkillTokenExpiredException extends UnauthorizedException {
   constructor(public message: string, public statusCode?: number) {
@@ -166,6 +175,41 @@ export class SkillAccessTokenExceptionFilter implements ExceptionFilter {
 @Controller()
 export class AppController {
   constructor(private readonly jwtService: JwtService) { }
+  @UseFilters(new SkillAccessTokenExceptionFilter())
+  @UseGuards(SkillAuthGuard)
+  @Post()
+  async root(@Res() res: Response) {
+    const methods = Reflect.ownKeys(Object.getPrototypeOf(this));
+    const intents = Object.keys(res.req.body.request.nlu.intents);
+    let intentId: string;
+    if (intents.length) {
+      intentId = Object.keys(res.req.body.request.nlu.intents).pop();
+    } else {
+      intentId = 'root';
+    }
+    const rootMethods = methods.filter((method) => Reflect.getMetadata('intentId', this, method) == intentId)
+    const methodName = rootMethods.pop();
+    let message: string;
+    if (methodName in this) {
+      const method = this[methodName] as Function;
+      const access_token = res.req.body.session.user.access_token;
+      const payload = await this.jwtService.verifyAsync(access_token);
+      const userId = payload.userId;
+      message = await method.call(this, userId);
+    }
+    let response: any =
+    {
+      "response": {
+        "response_type": "text",
+        "text": message,
+      },
+      end_session: false,
+      "version": "1.0",
+    }
+    res.json(response).send();
+  }
+}
+
 @Injectable()
 @Controller('token')
 export class TokenController {
