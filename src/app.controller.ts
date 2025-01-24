@@ -8,21 +8,30 @@ import {
   Query,
   Render,
   HttpStatus,
-  Res
+  Res,
+  ExecutionContext,
+  CanActivate,
+  UseGuards,
+  UnauthorizedException,
+  Catch,
+  ExceptionFilter,
+  ArgumentsHost,
+  UseFilters,
+  Logger
 } from '@nestjs/common';
 import { AuthDto } from './dto/authDto.dto';
 import { AuthFormDto } from './dto/authForm.dto';
 import { Response } from 'express';
-import { JwtService } from '@nestjs/jwt';
+import { JsonWebTokenError, JwtService, TokenExpiredError } from '@nestjs/jwt';
 import "reflect-metadata";
-import { validate} from 'class-validator';
+import { validate } from 'class-validator';
 import { sha1 } from 'js-sha1';
 import axios from 'axios';
 import { AuthCodeDto } from './dto/update-feedback.dto';
 import config from './config'
 
 class Authentication {
-  
+
   public async authenticate(userName: string, password: string) {
 
     const hash = Buffer.from(sha1(password), 'hex');
@@ -60,9 +69,9 @@ class Authentication {
 }
 
 class DOAPI {
-  
+
   public async getTasks(userId: string) {
-    
+
     let response = await axios.get(`https://base.itplan.ru:7071/DO_Dev3/hs/api/tasks?userId=${userId}`, {
       auth: {
         username: config.authDO.username,
@@ -73,10 +82,94 @@ class DOAPI {
   }
 }
 
+class SkillMissingAccessTokenException extends UnauthorizedException {
+  constructor(public message: string, public statusCode?: number) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+class SkillInvalidAccessTokenException extends UnauthorizedException {
+  constructor(public message: string, public statusCode?: number) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+
+class SkillTokenExpiredException extends UnauthorizedException {
+  constructor(public message: string, public statusCode?: number) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
+
+@Injectable()
+export class SkillAuthGuard implements CanActivate {
+  constructor(private readonly jwtService: JwtService) { }
+
+  async verify(accessToken: string) {
+    try {
+      const payload = await this.jwtService.verifyAsync(accessToken);
+      const currentTime = Math.floor(Date.now() / 1000);
+      const exp = payload.exp;
+      if (currentTime > exp) {
+        throw new SkillTokenExpiredException('Token has expired');
+      }
+    } catch (error) {
+      if (error instanceof JsonWebTokenError) {
+        throw new SkillInvalidAccessTokenException('Access token is invalid')
+      }
+      if (error instanceof SkillTokenExpiredException) {
+        throw new SkillTokenExpiredException(error.message)
+      }
+    }
+    return true;
+  }
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const accessToken = request.body.session.user.access_token;
+    if (!accessToken) {
+      throw new SkillMissingAccessTokenException('The request does not contain an access token');
+    }
+    try {
+      return await this.verify(accessToken);
+    } catch (error) {
+      throw error;
+    }
+  }
+}
+
+@Catch(SkillInvalidAccessTokenException, SkillInvalidAccessTokenException, SkillTokenExpiredException)
+export class SkillAccessTokenExceptionFilter implements ExceptionFilter {
+
+  private readonly logger = new Logger(SkillAccessTokenExceptionFilter.name);
+
+  catch(exception: HttpException, host: ArgumentsHost) {
+    if (exception instanceof SkillInvalidAccessTokenException) {
+      this.logger.error(exception.message);
+    }
+    const ctx = host.switchToHttp();
+    const response = ctx.getResponse<Response>();
+    response.status(HttpStatus.OK).json({
+      "response": {
+        "response_type": "text",
+        "text": "Для использования навыка вам необходимо авторизоваться",
+      },
+      end_session: false,
+      "version": "1.0",
+    });
+  }
+}
+
+@Controller()
+export class AppController {
+  constructor(private readonly jwtService: JwtService) { }
 @Injectable()
 @Controller('token')
 export class TokenController {
-  
+
   constructor(private readonly jwtService: JwtService) { }
 
   @Post()
