@@ -88,7 +88,7 @@ function Intent(intendId?: string) {
       Reflect.defineMetadata('intentId', intendId, target, propertyKey);
     } else {
       Reflect.defineMetadata('intentId', 'root', target, propertyKey);
-    } { }
+    }
   }
 }
 
