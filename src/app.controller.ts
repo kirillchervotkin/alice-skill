@@ -17,11 +17,17 @@ import {
   ExceptionFilter,
   ArgumentsHost,
   UseFilters,
-  Logger
+  Logger,
+  NestMiddleware,
+  NestInterceptor,
+  CallHandler,
+  UseInterceptors,
+  createParamDecorator,
+  applyDecorators
 } from '@nestjs/common';
 import { AuthDto } from './dto/authDto.dto';
 import { AuthFormDto } from './dto/authForm.dto';
-import { Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { JsonWebTokenError, JwtService, TokenExpiredError } from '@nestjs/jwt';
 import "reflect-metadata";
 import { validate } from 'class-validator';
@@ -29,6 +35,10 @@ import { sha1 } from 'js-sha1';
 import axios from 'axios';
 import { AuthCodeDto } from './dto/update-feedback.dto';
 import config from './config'
+import { Reflector } from '@nestjs/core';
+import { PATH_METADATA } from '@nestjs/common/constants';
+import { map, Observable } from 'rxjs';
+import { request } from 'http';
 
 class Authentication {
 
@@ -82,16 +92,6 @@ class DOAPI {
   }
 }
 
-function Intent(intendId?: string) {
-  return (target: Object, propertyKey: string | symbol) => {
-    if (intendId) {
-      Reflect.defineMetadata('intentId', intendId, target, propertyKey);
-    } else {
-      Reflect.defineMetadata('intentId', 'root', target, propertyKey);
-    }
-  }
-}
-
 class SkillMissingAccessTokenException extends UnauthorizedException {
   constructor(public message: string, public statusCode?: number) {
     super(message);
@@ -125,6 +125,7 @@ export class SkillAuthGuard implements CanActivate {
       if (currentTime > exp) {
         throw new SkillTokenExpiredException('Token has expired');
       }
+      return payload;
     } catch (error) {
       if (error instanceof JsonWebTokenError) {
         throw new SkillInvalidAccessTokenException('Access token is invalid')
@@ -133,7 +134,6 @@ export class SkillAuthGuard implements CanActivate {
         throw new SkillTokenExpiredException(error.message)
       }
     }
-    return true;
   }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -143,7 +143,7 @@ export class SkillAuthGuard implements CanActivate {
       throw new SkillMissingAccessTokenException('The request does not contain an access token');
     }
     try {
-      return await this.verify(accessToken);
+      return request.body.payload = await this.verify(accessToken);
     } catch (error) {
       throw error;
     }
@@ -166,47 +166,88 @@ export class SkillAccessTokenExceptionFilter implements ExceptionFilter {
         "response_type": "text",
         "text": "Для использования навыка вам необходимо авторизоваться",
       },
+      start_account_linking: {},
       end_session: false,
       "version": "1.0",
     });
   }
 }
 
-@Controller()
-export class AppController {
-  constructor(private readonly jwtService: JwtService) { }
-  @UseFilters(new SkillAccessTokenExceptionFilter())
-  @UseGuards(SkillAuthGuard)
-  @Post()
-  async root(@Res() res: Response) {
-    const methods = Reflect.ownKeys(Object.getPrototypeOf(this));
-    const intents = Object.keys(res.req.body.request.nlu.intents);
+@Injectable()
+export class IntentMiddleware implements NestMiddleware {
+  use(req: Request, res: Response, next: NextFunction) {
+    const intents: string[] = Object.keys(res.req.body.request.nlu.intents);
     let intentId: string;
     if (intents.length) {
-      intentId = Object.keys(res.req.body.request.nlu.intents).pop();
+      intentId = String(Object.keys(res.req.body.request.nlu.intents).pop());
     } else {
-      intentId = 'root';
+      intentId = '';
     }
-    const rootMethods = methods.filter((method) => Reflect.getMetadata('intentId', this, method) == intentId)
-    const methodName = rootMethods.pop();
-    let message: string;
-    if (methodName in this) {
-      const method = this[methodName] as Function;
-      const access_token = res.req.body.session.user.access_token;
-      const payload = await this.jwtService.verifyAsync(access_token);
-      const userId = payload.userId;
-      message = await method.call(this, userId);
+    req.url = '/' + intentId;
+    next();
+  }
+}
+
+@Injectable()
+export class SkillPayloadInterceptor implements NestInterceptor {
+  constructor(private readonly jwtService: JwtService) { }
+
+  async intercept(context: ExecutionContext, handler: CallHandler): Promise<Observable<any>> {
+    const request = context.switchToHttp().getRequest();
+    try {
+      const accessToken = request.body.session.user.access_token;
+      const payload = await this.jwtService.verifyAsync(accessToken);
+      const currentTime = Math.floor(Date.now() / 1000);
+      const exp = payload.exp;
+      if (currentTime > exp) {
+        throw new SkillTokenExpiredException('Token has expired');
+      }
+      request.body.payload = payload;
+    } catch (error) {
+      request.body.payload = null;
     }
-    let response: any =
-    {
-      "response": {
-        "response_type": "text",
-        "text": message,
-      },
-      end_session: false,
-      "version": "1.0",
-    }
-    res.json(response).send();
+    return handler.handle()
+      .pipe(map((data: any) => data))
+  }
+}
+
+export class SkillResponeInterceptor implements NestInterceptor {
+  intercept(context: ExecutionContext, handler: CallHandler): Observable<any> {
+    return handler.handle()
+      .pipe(map((text: string) => {
+        return {
+          "response": {
+            "response_type": "text",
+            "text": text,
+          },
+          end_session: false,
+          "version": "1.0",
+        }
+      }),
+      );
+  }
+}
+
+const UserId = createParamDecorator((data: any, ctx: ExecutionContext): string | null => {
+  const request = ctx.switchToHttp().getRequest();
+  if (!request.body.payload) {
+    return null;
+  } else {
+    return request.body.payload.userId;
+  }
+});
+
+const Intent = (intentId: string = '') => {
+  return applyDecorators(
+    UseFilters(SkillAccessTokenExceptionFilter),
+    UseInterceptors(SkillPayloadInterceptor),
+    UseInterceptors(SkillResponeInterceptor),
+    UseFilters(SkillAccessTokenExceptionFilter),
+    Post(intentId),
+    UseFilters(SkillAccessTokenExceptionFilter)
+  )
+}
+
   }
 }
 
