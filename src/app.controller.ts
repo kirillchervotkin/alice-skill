@@ -273,6 +273,15 @@ export class TokenController {
   }
 }
 
+@Controller()
+export class SkillController {
+
+  @Intent()
+  root() {
+    return 'Добро пожаловать в навык АйтиПлан';
+  }
+}
+
 @Injectable()
 @Controller('auth')
 export class AuthController {
