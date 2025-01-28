@@ -248,9 +248,6 @@ const Intent = (intentId: string = '') => {
   )
 }
 
-  }
-}
-
 @Injectable()
 @Controller('token')
 export class TokenController {
