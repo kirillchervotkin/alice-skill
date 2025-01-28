@@ -260,19 +260,17 @@ export class AuthController {
     const baseUrl = 'https://base.itplan.ru:3015'
     let response = {
       data: {
-        url: `${baseUrl}/auth?redirect_uri=${authDto.redirect_uri}&response_type=${authDto.response_type}&client_id=${authDto.client_id}&state=${authDto.state}${(authDto.scope ? '&scope=' + authDto.scope : '')}`,
-        loginValidationError: null,
-        passwordValidationError: null,
-        errorMessage: null
+        url: `${baseUrl}/auth?redirect_uri=${authDto.redirect_uri}&response_type=${authDto.response_type}&client_id=${authDto.client_id}&state=${authDto.state}${(authDto.scope ? '&scope=' + authDto.scope : '')}` ,
       }
-    };
+    } as any;
     const errors = await validate(authForm);
     errors.forEach((error) => {
+      const constraints = error.constraints || {};
       if (error.property == 'login') {
-        response.data.loginValidationError = Object.values(error.constraints).join(', ')
+        response.data.loginValidationError = Object.values(constraints).join(', ')
       }
       if (error.property == 'password') {
-        response.data.passwordValidationError = Object.values(error.constraints).join(', ')
+        response.data.passwordValidationError = Object.values(constraints).join(', ')
       }
     });
     if (errors.length) {
