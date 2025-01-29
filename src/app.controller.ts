@@ -150,6 +150,60 @@ export class SkillAuthGuard implements CanActivate {
   }
 }
 
+interface SkillResponseBody {
+  response_type: string,
+  text: string,
+  end_session: boolean
+}
+
+class SkillResponse {
+
+  public response: SkillResponseBody
+  public version: string
+  public start_account_linking: undefined | {}
+  public session_state?: any
+
+  constructor(message: string) {
+    this.response = {
+      response_type: 'text',
+      text: message,
+      end_session: false,
+    }
+    this.version = "1.0";
+  }
+}
+
+class SkillResponseBuilder {
+
+  private readonly response: SkillResponse;
+
+  public constructor(message: string) {
+    this.response = new SkillResponse(message);
+  }
+
+  public setEndSesstion(): SkillResponseBuilder {
+    this.response.response.end_session = true;
+    return this;
+  }
+
+  public setStartAccountLinking(): SkillResponseBuilder {
+    this.response.start_account_linking = {}
+    return this;
+  }
+
+  public setData(data: any): SkillResponseBuilder {
+    if (!this.response.session_state) {
+      this.response.session_state = {}
+    }
+    this.response.session_state.data = data;
+    return this;
+  }
+
+  public build(): SkillResponse {
+    return this.response;
+  }
+}
+
 @Catch(SkillInvalidAccessTokenException, SkillInvalidAccessTokenException, SkillTokenExpiredException)
 export class SkillAccessTokenExceptionFilter implements ExceptionFilter {
 
@@ -241,7 +295,6 @@ const Intent = (intentId: string = '') => {
   return applyDecorators(
     UseFilters(SkillAccessTokenExceptionFilter),
     UseInterceptors(SkillPayloadInterceptor),
-    UseInterceptors(SkillResponeInterceptor),
     UseFilters(SkillAccessTokenExceptionFilter),
     Post(intentId),
     UseFilters(SkillAccessTokenExceptionFilter)
@@ -277,8 +330,8 @@ export class TokenController {
 export class SkillController {
 
   @Intent()
-  root() {
-    return 'Добро пожаловать в навык АйтиПлан';
+  root(): SkillResponse {
+    return new SkillResponse('Добро пожаловать в Айти План')
   }
 }
 
