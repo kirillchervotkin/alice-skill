@@ -300,6 +300,16 @@ const UserId = createParamDecorator((data: any, ctx: ExecutionContext): string |
   }
 });
 
+const Handler = (handlerId: string) => {
+  return applyDecorators(
+    UseFilters(SkillAccessTokenExceptionFilter),
+    UseInterceptors(SkillPayloadInterceptor),
+    UseFilters(SkillAccessTokenExceptionFilter),
+    Post('nextHandler:' + handlerId),
+    UseFilters(SkillAccessTokenExceptionFilter)
+  )
+}
+
 const Intent = (intentId: string = '') => {
   return applyDecorators(
     UseFilters(SkillAccessTokenExceptionFilter),
