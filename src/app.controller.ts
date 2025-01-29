@@ -199,6 +199,14 @@ class SkillResponseBuilder {
     return this;
   }
 
+  public setNextHandler(handlerName: string): SkillResponseBuilder {
+    if (!this.response.session_state) {
+      this.response.session_state = {}
+    }
+    this.response.session_state.nextHandler = 'nextHandler:' + handlerName
+    return this
+  }
+
   public build(): SkillResponse {
     return this.response;
   }
@@ -231,13 +239,14 @@ export class SkillAccessTokenExceptionFilter implements ExceptionFilter {
 export class IntentMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction) {
     const intents: string[] = Object.keys(res.req.body.request.nlu.intents);
-    let intentId: string;
-    if (intents.length) {
-      intentId = String(Object.keys(res.req.body.request.nlu.intents).pop());
+    const sessionState: any = res.req.body.state.session;
+    if (sessionState && sessionState.nextHandler) {
+      req.url = '/' + sessionState.nextHandler;
+    } else if (intents.length) {
+      req.url = '/' + String(Object.keys(res.req.body.request.nlu.intents).pop());
     } else {
-      intentId = '';
+      req.url = '/';
     }
-    req.url = '/' + intentId;
     next();
   }
 }
