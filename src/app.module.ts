@@ -1,4 +1,4 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule, RequestMethod } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { SkillController } from './skill/skill.controller';
 import { TokenController, AuthController } from './token/token.controller';
@@ -22,6 +22,6 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(IntentMiddleware)
-      .forRoutes('');
+      .forRoutes({ path: '/', method: RequestMethod.POST });
   }
 }
