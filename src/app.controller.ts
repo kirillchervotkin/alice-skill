@@ -274,23 +274,6 @@ export class SkillPayloadInterceptor implements NestInterceptor {
   }
 }
 
-export class SkillResponeInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, handler: CallHandler): Observable<any> {
-    return handler.handle()
-      .pipe(map((text: string) => {
-        return {
-          "response": {
-            "response_type": "text",
-            "text": text,
-          },
-          end_session: false,
-          "version": "1.0",
-        }
-      }),
-      );
-  }
-}
-
 const UserId = createParamDecorator((data: any, ctx: ExecutionContext): string | null => {
   const request = ctx.switchToHttp().getRequest();
   if (!request.body.payload) {
