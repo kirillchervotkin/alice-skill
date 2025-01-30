@@ -1,7 +1,10 @@
-import { Injectable, MiddlewareConsumer, Module, NestMiddleware, NestModule } from '@nestjs/common';
-import { SkillController, AuthController, IntentMiddleware, TokenController, SkillAuthGuard } from './app.controller';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { NextFunction } from 'express';
+import { SkillController } from './skill/skill.controller';
+import { TokenController, AuthController } from './token/token.controller';
+import { IntentMiddleware } from './middlewares';
+import { AuthenticationService } from './token/token.service';
+import { DocumentFlowApiClient } from './skill/skill.service';
 
 const FIVE_YEARS = '157766400s';
 
@@ -12,9 +15,8 @@ const FIVE_YEARS = '157766400s';
     signOptions: { expiresIn: FIVE_YEARS },
   })],
   controllers: [SkillController, AuthController, TokenController],
-  providers: [SkillAuthGuard],
+  providers: [AuthenticationService, DocumentFlowApiClient ],
 })
-
 
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
