@@ -32,3 +32,15 @@ export const Intent = (intentId: string = '') => {
     )
 }
 
+export const Slots = createParamDecorator((data: any, ctx: ExecutionContext): any | null => {
+    const request = ctx.switchToHttp().getRequest();
+    const intents: any = request.body.request.nlu.intents;
+    const objectOfSlots: any = {};
+    Object.keys(intents).forEach((keyOfIntent) => {
+        Object.keys(intents[keyOfIntent].slots).forEach((keyOfSlot: string) => {
+            const slot: any = intents[keyOfIntent].slots[keyOfSlot];
+            objectOfSlots[keyOfSlot] = slot.value;
+        });
+    });
+    return objectOfSlots;
+});
