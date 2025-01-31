@@ -1,5 +1,5 @@
 import { applyDecorators, createParamDecorator, ExecutionContext, Post, UseFilters, UseInterceptors } from "@nestjs/common";
-import { SkillAccessTokenExceptionFilter } from "./exceptionFilters";
+import { BadRequestExceptionFilter, SkillAccessTokenExceptionFilter } from "./exceptionFilters";
 import { SkillPayloadInterceptor } from "./interceptors";
 
 
@@ -14,7 +14,7 @@ export const UserId = createParamDecorator((data: any, ctx: ExecutionContext): s
 
 export const Handler = (handlerId: string) => {
     return applyDecorators(
-        UseFilters(SkillAccessTokenExceptionFilter),
+        UseFilters(SkillAccessTokenExceptionFilter, BadRequestExceptionFilter),
         UseInterceptors(SkillPayloadInterceptor),
         UseFilters(SkillAccessTokenExceptionFilter),
         Post('nextHandler:' + handlerId),
@@ -24,10 +24,11 @@ export const Handler = (handlerId: string) => {
 
 export const Intent = (intentId: string = '') => {
     return applyDecorators(
-        UseFilters(SkillAccessTokenExceptionFilter),
+        UseFilters(SkillAccessTokenExceptionFilter, BadRequestExceptionFilter),
         UseInterceptors(SkillPayloadInterceptor),
         UseFilters(SkillAccessTokenExceptionFilter),
         Post(intentId),
         UseFilters(SkillAccessTokenExceptionFilter)
     )
 }
+
