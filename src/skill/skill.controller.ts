@@ -1,8 +1,9 @@
-import { Controller, Injectable, Res, UseGuards } from "@nestjs/common";
-import { Handler, Intent, UserId } from "../decorators";
+import { Controller, Injectable, UseGuards } from "@nestjs/common";
+import { Handler, Intent, Slots, UserId } from "../decorators";
 import { SkillResponse, SkillResponseBuilder } from "src/response-utils";
 import { DocumentFlowApiClient } from "./skill.service";
 import { SkillAuthGuard } from "src/guards";
+import { MinutesDto } from "./dto/minutes.dto";
 
 
 @Injectable()
@@ -22,6 +23,25 @@ export class SkillController {
     const tasks: any[] = await this.documentFlowApiClient.getTasks(userId);
     const message: string = tasks.reduce<string>((text: string, task: any, index) => text + (index + 1) + '. ' + task.name + '\n\n', '');
     return new SkillResponse(message);
+  }
+
+  @UseGuards(SkillAuthGuard)
+  @Intent('addStufftime')
+  addStufftime() {
+    return new SkillResponseBuilder('Сколько часов вы хотите указать?')
+      .setNextHandler('countOfHours')
+      .build()
+  }
+
+  @UseGuards(SkillAuthGuard)
+  @Handler('countOfTime')
+  countOfTime(@Slots() slots: MinutesDto) {
+    return new SkillResponseBuilder('По какой задаче вы хотите указать трудозатраты?')
+      .setNextHandler('task')
+      .setData({
+        time: slots.time
+      })
+      .build()
   }
 
 }
