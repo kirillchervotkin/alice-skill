@@ -19,4 +19,12 @@ export class DocumentFlowApiClient {
     return response.data;
   }
 
+  public async getTaskByName(userId: string, name: string): Promise<Task> {
+    let response: AxiosResponse = await axios.get(`${this.baseUrl}task?userId=${userId}&taskName=${name}`, {
+      auth: this.auth
+    });
+    return response.data;
+  }
+
+}
 }
