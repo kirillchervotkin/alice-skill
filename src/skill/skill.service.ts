@@ -26,5 +26,13 @@ export class DocumentFlowApiClient {
     return response.data;
   }
 
+  public async addStufftime(stufftime: Stufftime): Promise<void> {
+    (stufftime as any).dateTime = stufftime.dateTime.toISOString().replace(/(\.\d{3})|[^\d]/g,'')
+    let response: AxiosResponse = await axios.post(`${this.baseUrl}stufftime`, stufftime, {
+      auth: this.auth
+    });
+    return response.data;
+  }
+
 }
 }
