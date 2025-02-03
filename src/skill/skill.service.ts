@@ -2,6 +2,21 @@ import axios, { AxiosResponse } from "axios";
 import config from "src/config";
 
 
+export interface Task {
+  id: string
+  name: string,
+  deadline?: string
+}
+
+export interface Stufftime {
+  taskId: string
+  userId: string
+  workTypeId: string
+  dateTime: Date
+  countOfMinutes: string
+  description: string
+}
+
 export class DocumentFlowApiClient {
 
   private baseUrl: string = 'https://base.itplan.ru:7071/DO_Dev3/hs/api/'
