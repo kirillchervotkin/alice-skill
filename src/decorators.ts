@@ -27,6 +27,16 @@ export const Command = createParamDecorator((data: any, ctx: ExecutionContext): 
     return request.body.request.command;
 });
 
+export const Time = createParamDecorator((data: any, ctx: ExecutionContext): Date => {
+    const request = ctx.switchToHttp().getRequest()
+    const timeZone = request.body.meta.timezone;
+    let dateString: string = new Date().toLocaleString('en-US', {
+        timeZone: timeZone
+      });
+    const date: Date = new Date(dateString);
+    return date;
+});
+
 export const Handler = (handlerId: string) => {
     return applyDecorators(
         UseFilters(SkillAccessTokenExceptionFilter, BadRequestExceptionFilter),
