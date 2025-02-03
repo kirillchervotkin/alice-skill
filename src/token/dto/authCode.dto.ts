@@ -13,7 +13,7 @@ export class AuthCodeDto  {
     code: string
     
     @IsNotEmpty()
-    grand_type: string
+    grant_type: string
     
     @IsNotEmpty()
     redirect_uri: string
