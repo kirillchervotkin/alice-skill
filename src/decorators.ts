@@ -12,6 +12,16 @@ export const UserId = createParamDecorator((data: any, ctx: ExecutionContext): s
     }
 });
 
+export const Data = createParamDecorator((data: any, ctx: ExecutionContext): unknown | null => {
+    const request = ctx.switchToHttp().getRequest();
+    const dataOfSession: unknown = request.body.state.session.data;
+    if (!dataOfSession) {
+        return null;
+    } else {
+        return dataOfSession;
+    }
+});
+
 export const Handler = (handlerId: string) => {
     return applyDecorators(
         UseFilters(SkillAccessTokenExceptionFilter, BadRequestExceptionFilter),
