@@ -22,6 +22,11 @@ export const Data = createParamDecorator((data: any, ctx: ExecutionContext): unk
     }
 });
 
+export const Command = createParamDecorator((data: any, ctx: ExecutionContext): string => {
+    const request = ctx.switchToHttp().getRequest()
+    return request.body.request.command;
+});
+
 export const Handler = (handlerId: string) => {
     return applyDecorators(
         UseFilters(SkillAccessTokenExceptionFilter, BadRequestExceptionFilter),
