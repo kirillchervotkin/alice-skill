@@ -57,6 +57,14 @@ export const Intent = (intentId: string = '') => {
     )
 }
 
+export const Command = (command: string) => {
+    return applyDecorators(
+        UseFilters(SkillAccessTokenExceptionFilter, BadRequestExceptionFilter, SkillAccessTokenExceptionFilter),
+        UseInterceptors(SkillPayloadInterceptor),
+        Post('command' + encodeURIComponent(command.toLocaleLowerCase())),
+    )
+}
+
 export const Slots = createParamDecorator((data: any, ctx: ExecutionContext): any | null => {
     const request = ctx.switchToHttp().getRequest();
     const intents: any = request.body.request.nlu.intents;
