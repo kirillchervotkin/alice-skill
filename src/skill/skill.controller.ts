@@ -47,7 +47,6 @@ export class SkillController {
   async task(@UserId() userId: string, @Data() data: any, @UserUtterance() userUtterance: string) {
     const task: Task = await this.documentFlowApiClient.getTaskByName(userId, userUtterance);
     data.taskId = task.id;
-
     return new SkillResponseBuilder('Произнесите ваши трудозатраты')
       .setNextHandler('stafftime')
       .setData(data)

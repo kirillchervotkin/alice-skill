@@ -42,7 +42,7 @@ export class DocumentFlowApiClient {
   }
 
   public async addStufftime(stufftime: Stufftime): Promise<void> {
-    (stufftime as any).dateTime = stufftime.dateTime.toISOString().replace(/(\.\d{3})|[^\d]/g,'')
+    (stufftime as any).dateTime = stufftime.dateTime.toISOString().replace(/(\.\d{3})|[^\d]/g, '')
     let response: AxiosResponse = await axios.post(`${this.baseUrl}stufftime`, stufftime, {
       auth: this.auth
     });
