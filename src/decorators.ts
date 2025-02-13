@@ -22,9 +22,9 @@ export const Data = createParamDecorator((data: any, ctx: ExecutionContext): unk
     }
 });
 
-export const UserUtterance = createParamDecorator((data: any, ctx: ExecutionContext): string => {
+export const UserUtterance = createParamDecorator((data: any, ctx: ExecutionContext): any => {
     const request = ctx.switchToHttp().getRequest()
-    return request.body.request.command;
+    return { text: request.body.request.command };  
 });
 
 export const Time = createParamDecorator((data: any, ctx: ExecutionContext): Date => {

@@ -1,9 +1,10 @@
-import { Controller, Injectable, Res, UseGuards } from "@nestjs/common";
+import { Controller, Injectable, Res, UseGuards, UseInterceptors } from "@nestjs/common";
 import { UserUtterance, Data, Handler, Intent, Slots, Time, UserId, Command } from "../decorators";
 import { SkillResponse, SkillResponseBuilder } from "src/response-utils";
 import { DocumentFlowApiClient, Stufftime, Task } from "./skill.service";
 import { SkillAuthGuard } from "src/guards";
 import { MinutesDto } from "./dto/minutes.dto";
+import { TransformUserUtteranceToMinutesInterceptor } from "src/interceptors";
 
 @Injectable()
 @Controller()
@@ -32,20 +33,21 @@ export class SkillController {
       .build()
   }
 
+  @UseInterceptors(TransformUserUtteranceToMinutesInterceptor)
   @UseGuards(SkillAuthGuard)
   @Handler('time')
-  time(@Slots() slots: MinutesDto) {
+  time(@UserUtterance() UserUtterance: MinutesDto) {
     return new SkillResponseBuilder('По какой задаче вы хотите указать трудозатраты?')
       .setNextHandler('task')
-      .setData({ time: slots.time })
+      .setData({ time: UserUtterance.text })
       .build()
   }
 
 
   @UseGuards(SkillAuthGuard)
   @Handler('task')
-  async task(@UserId() userId: string, @Data() data: any, @UserUtterance() userUtterance: string) {
-    const task: Task = await this.documentFlowApiClient.getTaskByName(userId, userUtterance);
+  async task(@UserId() userId: string, @Data() data: any, @UserUtterance() userUtterance: any) {
+    const task: Task = await this.documentFlowApiClient.getTaskByName(userId, userUtterance.text);
     data.taskId = task.id;
     return new SkillResponseBuilder('Произнесите ваши трудозатраты')
       .setNextHandler('stafftime')
