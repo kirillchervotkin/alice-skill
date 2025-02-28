@@ -195,13 +195,21 @@ export class AItransform {
   constructor(@Inject('LLM_MODEL') private readonly model: LLMmodel) { }
 
   async toMinutes(text: string): Promise<number | null> {
-    const model: LLM = await this.model.getModel();
-    const res: string = await model.invoke([`Преобразуй "${text}" в количество минут. Верни только число. Если строку нельзя преобразовать верни null`]);
-    const time = Number.parseInt(res);
-    if (isNaN(time)) {
-      return null;
-    } else {
-      return time;
+
+    try {
+
+      const model: LLM = await this.model.getModel();
+      const res: string = await model.invoke([`Преобразуй "${text}" в количество минут. Верни только число. Если строку нельзя преобразовать верни null`]);
+      const time = Number.parseInt(res);
+      if (isNaN(time)) {
+        return null;
+      } else {
+        return time;
+      }
+
+    } catch (error) {
+      throw error;
     }
   }
+
 }
