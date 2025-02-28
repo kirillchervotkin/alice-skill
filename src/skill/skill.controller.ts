@@ -1,16 +1,21 @@
-import { Controller, Injectable, Res, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Controller, Inject, Injectable, Res, UseGuards, UseInterceptors } from "@nestjs/common";
 import { UserUtterance, Data, Handler, Intent, Slots, Time, UserId, Command } from "../decorators";
 import { SkillResponse, SkillResponseBuilder } from "src/response-utils";
-import { DocumentFlowApiClient, Stufftime, Task } from "./skill.service";
+import { DocumentFlowApiClient, LLMmodel, Project, Stufftime, Task } from "./skill.service";
 import { SkillAuthGuard } from "src/guards";
 import { MinutesDto } from "./dto/minutes.dto";
 import { TransformUserUtteranceToMinutesInterceptor } from "src/interceptors";
+import { LLM } from "@langchain/core/language_models/llms";
+import { routes } from "src/routes";
 
 @Injectable()
 @Controller()
 export class SkillController {
 
-  constructor(private readonly documentFlowApiClient: DocumentFlowApiClient) { }
+  constructor( 
+    private readonly documentFlowApiClient: DocumentFlowApiClient,
+    @Inject('LLM_MODEL') private readonly model: LLMmodel
+  ) { }
 
   @Intent()
   root(): SkillResponse {
@@ -74,6 +79,35 @@ export class SkillController {
   @Command('отмена')
   cancel() {
     return new SkillResponse('Для продолжения произнесите любую команду');
+  }
+
+  @Command('спасибо')
+  thanks() {
+    return new SkillResponse('Всегда рада помочь. Для продолжения назовите команду');
+  }
+
+  @Command('трудозатраты по проекту')
+  @UseGuards(SkillAuthGuard)
+  stafftimeByProject() {
+    return new SkillResponseBuilder('По какому проекту вы хотите узнать трудозатраты?')
+      .setNextHandler('project')
+      .build()
+  }
+
+  @Handler('project')
+  @UseGuards(SkillAuthGuard)
+  async project(@UserUtterance() UserUtterance: any) {
+    const project: Project = await this.documentFlowApiClient.getProjectByName(UserUtterance.text);
+    const stafftimeObjects: any[] = await this.documentFlowApiClient.getStafftimeByProjectId(project.id);
+    let responseString: string = '';
+    stafftimeObjects.forEach((stafftimeByUser) => {
+      stafftimeByUser.stufftime.forEach((stafftime: any) => {
+        responseString = responseString + stafftime.description + ' \n';
+      })
+    })
+    const model: LLM = await this.model.getModel();
+    const text: string = await model.invoke([`Перескажи кратко что сделано на проекте используя данный список описания трудозатрат: ${responseString}`]);
+    return new SkillResponse(text);
   }
 
 }
