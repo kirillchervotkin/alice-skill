@@ -52,7 +52,7 @@ export class SkillResponseBuilder {
         if (!this.response.session_state) {
             this.response.session_state = {}
         }
-        this.response.session_state.nextHandler = 'nextHandler' + handlerName
+        this.response.session_state.nextHandler = handlerName;
         return this
     }
 
