@@ -14,6 +14,11 @@ export interface Task {
   deadline?: string
 }
 
+export interface Project {
+  id: string,
+  name: string
+}
+
 export interface Stufftime {
   taskId: string
   userId: string
@@ -50,6 +55,20 @@ export class DocumentFlowApiClient {
   public async addStufftime(stufftime: Stufftime): Promise<void> {
     (stufftime as any).dateTime = stufftime.dateTime.toISOString().replace(/(\.\d{3})|[^\d]/g, '')
     let response: AxiosResponse = await axios.post(`${this.baseUrl}stufftime`, stufftime, {
+      auth: this.auth
+    });
+    return response.data;
+  }
+
+  public async getProjectByName(name: string) {
+    let response: AxiosResponse = await axios.get(`${this.baseUrl}project?projectName=${name}`, {
+      auth: this.auth
+    });
+    return response.data;
+  }
+
+  public async getStafftimeByProjectId(projectId: string) {
+    let response: AxiosResponse = await axios.get(`${this.baseUrl}stufftime?projectId=${projectId}`, {
       auth: this.auth
     });
     return response.data;
