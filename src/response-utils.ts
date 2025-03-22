@@ -1,8 +1,11 @@
+import e from "express"
+
 export interface SkillResponseBody {
 
     response_type: string,
     text: string,
-    end_session: boolean
+    end_session: boolean,
+    buttons?: any[]
 }
 
 export class SkillResponse {
@@ -28,6 +31,17 @@ export class SkillResponseBuilder {
 
     public constructor(message: string) {
         this.response = new SkillResponse(message);
+        this.response.session_state = undefined;
+    }
+
+    public setButton(title: string, hide: boolean): SkillResponseBuilder{
+        let button: any = { title: title, hide: hide};
+        if(typeof this.response.response.buttons === 'undefined'){
+            this.response.response.buttons = [button];
+        }else{
+            this.response.response.buttons.push(button);
+        }
+        return this;
     }
 
     public setEndSesstion(): SkillResponseBuilder {
