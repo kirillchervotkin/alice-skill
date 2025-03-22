@@ -6,6 +6,7 @@ import { BadRequestException, Logger, ValidationError, ValidationPipe } from '@n
 import config from './config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentFlowClientIBSessionException } from './exceptions';
+import { GlobalExceptionFilter } from './exceptionFilters';
 
 async function bootstrap() {
   const filePathOfCert = path.resolve(__dirname, '../src/certs/cert.pem');
@@ -20,6 +21,7 @@ async function bootstrap() {
   const hostname = config.hostname || 'localhost';
   app.useStaticAssets(path.join(__dirname, '..', 'public'));
   app.setBaseViewsDir(path.join(__dirname, '..', 'views'));
+  app.enableShutdownHooks();
   app.useGlobalFilters(new GlobalExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
