@@ -25,3 +25,11 @@ export class SkillTokenExpiredException extends UnauthorizedException {
         this.statusCode = statusCode;
     }
 }
+
+export class DocumentFlowClientIBSessionException extends UnauthorizedException {
+    
+    constructor(public message: string, public statusCode?: number) {
+        super(message);
+        this.statusCode = statusCode;
+    }
+}
