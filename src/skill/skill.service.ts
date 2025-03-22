@@ -1,17 +1,20 @@
-import axios, { AxiosResponse } from "axios";
+import axios, { AxiosInstance, AxiosResponse } from "axios";
 import config from "../config";
 import { YandexGPT, YandexGPTInputs } from "@langchain/yandex/llms";
 import { LLM } from "@langchain/core/language_models/llms";
 import { CreateIamTokenResponse } from "@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/iam/v1/iam_token_service";
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, OnModuleDestroy } from "@nestjs/common";
 import * as jose from 'node-jose'
-import { iam } from "@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud";
+import { DocumentFlowClientIBSessionException } from "src/exceptions";
+import { CookieJar } from 'tough-cookie';
+import { wrapper } from 'axios-cookiejar-support';
+import { Cron, CronExpression } from "@nestjs/schedule";
 
 
 export interface Task {
   id: string
   name: string,
-  deadline?: string
+  deadline: string
 }
 
 export interface Project {
@@ -28,9 +31,56 @@ export interface Stufftime {
   description: string
 }
 
-export class DocumentFlowApiClient {
+@Injectable()
+export class DocumentFlowApiClient implements OnModuleDestroy {
 
-  private baseUrl: string = 'https://base.itplan.ru:7071/DO_Dev3/hs/api/'
+
+  private client: AxiosInstance;
+
+  constructor() {
+    const jar = new CookieJar();
+    this.client = wrapper(axios.create({ jar }));
+  }
+
+public formatDateToYYYYMMDDHHMMSS(date: Date): string {
+    const year = date.getFullYear().toString();
+    const month = (date.getMonth() + 1).toString().padStart(2, '0');
+    const day = date.getDate().toString().padStart(2, '0');
+    const hours = date.getHours().toString().padStart(2, '0');
+    const minutes = date.getMinutes().toString().padStart(2, '0');
+    const seconds = date.getSeconds().toString().padStart(2, '0');
+
+    return `${year}${month}${day}${hours}${minutes}${seconds}`;
+  }
+
+  async onModuleDestroy() {
+    await this.closeSession();
+    console.log('session close');
+  }
+
+  public async closeSession() {
+
+    try {
+
+      let response = await this.client.get(`${this.baseUrl}tasks`, {
+        auth: this.auth,
+        headers: {
+          IBSession: 'finish'
+        }
+      });
+      return response.data;
+
+    } catch (error) {
+
+      if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
+        console.log('The session was not started');
+      }
+      throw error;
+    }
+  }
+
+
+  private baseUrl: string = 'https://base.itplan.ru:7071/DO/hs/api/'
 
   private auth: any = {
     username: config.authDO.username,
@@ -39,37 +89,81 @@ export class DocumentFlowApiClient {
 
   public async getTasks(userId: string) {
 
-    let response = await axios.get(`${this.baseUrl}tasks?userId=${userId}`, {
-      auth: this.auth
+    try {
+
+      let response = await this.client.get(`${this.baseUrl}tasks?userId=${userId}`, {
+        auth: this.auth,
+        headers: {
+          IBSession: 'start'
+        }
+      });
+      return response.data;
+
+    } catch (error) {
+
+      if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
+        throw new DocumentFlowClientIBSessionException(`IBSession header is not set`);
+      }
+    }
+  }
+
+  public keepAlive() {
+    this.client.get(`${this.baseUrl}tasks`, {
+      auth: this.auth,
+      headers: {
+        IBSession: 'start'
+      }
     });
-    return response.data;
+
   }
 
   public async getTaskByName(userId: string, name: string): Promise<Task> {
-    let response: AxiosResponse = await axios.get(`${this.baseUrl}task?userId=${userId}&taskName=${name}`, {
-      auth: this.auth
+    let response: AxiosResponse = await this.client.get(`${this.baseUrl}task?userId=${userId}&taskName=${name}`, {
+      auth: this.auth,
+      headers: {
+        IBSession: 'start'
+      }
     });
     return response.data;
   }
 
   public async addStufftime(stufftime: Stufftime): Promise<void> {
-    (stufftime as any).dateTime = stufftime.dateTime.toISOString().replace(/(\.\d{3})|[^\d]/g, '')
-    let response: AxiosResponse = await axios.post(`${this.baseUrl}stufftime`, stufftime, {
-      auth: this.auth
+    (stufftime as any).dateTime = this.formatDateToYYYYMMDDHHMMSS(stufftime.dateTime);
+    let response: AxiosResponse = await this.client.post(`${this.baseUrl}stufftime`, stufftime, {
+      auth: this.auth,
+      headers: {
+        IBSession: 'start'
+      }
     });
     return response.data;
   }
 
   public async getProjectByName(name: string) {
-    let response: AxiosResponse = await axios.get(`${this.baseUrl}project?projectName=${name}`, {
-      auth: this.auth
+    let response: AxiosResponse = await this.client.get(`${this.baseUrl}project?projectName=${name}`, {
+      auth: this.auth,
+      headers: {
+        IBSession: 'start'
+      }
     });
     return response.data;
   }
 
   public async getStafftimeByProjectId(projectId: string) {
     let response: AxiosResponse = await axios.get(`${this.baseUrl}stufftime?projectId=${projectId}`, {
-      auth: this.auth
+      auth: this.auth,
+      headers: {
+        IBSession: 'start'
+      }
+    });
+    return response.data;
+  }
+
+  public async getStafftimeTodayByUserId(userId: string) {
+    let response: AxiosResponse = await axios.get(`${this.baseUrl}stufftime/?userId=${userId}`, {
+      auth: this.auth,
+      headers: {
+        IBSession: 'start'
+      }
     });
     return response.data;
   }
@@ -231,4 +325,17 @@ export class AItransform {
     }
   }
 
+}
+
+@Injectable()
+export class KeepAlive {
+  constructor(
+    private readonly documentFlowApiClient: DocumentFlowApiClient,
+  ) { }
+
+  @Cron(CronExpression.EVERY_MINUTE)
+  runEveryMinute() {
+    this.documentFlowApiClient.keepAlive();
+    console.log('Поддержание запроса');
+  }
 }
