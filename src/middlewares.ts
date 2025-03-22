@@ -20,7 +20,9 @@ export class IntentMiddleware implements NestMiddleware {
             req.url = '/command' + encodeURIComponent(command);
         } else if (sessionState && sessionState.nextHandler) {
             req.url = '/' + sessionState.nextHandler;
-        } else {
+        } else if(command.length) {
+            req.url = '/commandunknow';
+        }else{
             req.url = '/';
         }
         next();
