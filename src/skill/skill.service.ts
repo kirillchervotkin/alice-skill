@@ -85,7 +85,7 @@ public formatDateToYYYYMMDDHHMMSS(date: Date): string {
   }
 
 
-  private baseUrl: string = 'https://base.itplan.ru:7071/DO/hs/api/'
+  private baseUrl: string = config.baseUrl;
 
   private auth: any = {
     username: config.authDO.username,
