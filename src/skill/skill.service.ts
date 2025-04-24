@@ -385,7 +385,10 @@ export class KeepAlive {
 
   @Cron(CronExpression.EVERY_MINUTE)
   runEveryMinute() {
-    this.documentFlowApiClient.keepAlive();
-    console.log('Поддержание запроса');
+    try {
+      this.documentFlowApiClient.keepAlive();
+    } catch (error) {
+      console.log(error);
+    }
   }
 }
