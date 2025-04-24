@@ -31,6 +31,11 @@ export interface Stufftime {
   description: string
 }
 
+export interface Worktypes {
+  id: string,
+  name: string
+}
+
 @Injectable()
 export class DocumentFlowApiClient implements OnModuleDestroy {
 
@@ -104,6 +109,29 @@ public formatDateToYYYYMMDDHHMMSS(date: Date): string {
       if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
         throw new DocumentFlowClientIBSessionException(`IBSession header is not set`);
       }
+    }
+  }
+
+  public async getWorktypes(): Promise<Worktypes[]> {
+
+    try {
+
+      let response = await this.client.get(`${this.baseUrl}worktypes`, {
+        auth: this.auth,
+        headers: {
+          IBSession: 'start'
+        }
+      });
+      return response.data;
+
+    } catch (error) {
+
+      if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
+        throw new DocumentFlowClientIBSessionException(`IBSession header is not set`);
+      } else {
+        throw error;
+      }
+
     }
   }
 
