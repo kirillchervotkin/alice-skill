@@ -92,6 +92,28 @@ public formatDateToYYYYMMDDHHMMSS(date: Date): string {
     password: config.authDO.password
   }
 
+  public async checkOverdueTasks(userId: string) {
+    try {
+
+      let response = await this.client.get(`${this.baseUrl}checkOverdueTasks?userId=${userId}`, {
+        auth: this.auth,
+        headers: {
+          IBSession: 'start'
+        }
+      });
+      return response.data.result;
+
+    } catch (error) {
+
+      if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
+        throw new DocumentFlowClientIBSessionException(`IBSession header is not set`);
+      } else {
+        throw error;
+      }
+    }
+
+  }
+
   public async getTasks(userId: string) {
 
     try {
