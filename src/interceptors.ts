@@ -38,6 +38,7 @@ export class TransformUserUtteranceToMinutesInterceptor implements NestIntercept
     try {
       const time: number | null = await this.aiTransfrom.toMinutes(command);
       request.body.request.command = time;
+      request.body.request.original_utterance  = time;
     } catch (error) {
       throw error;
     }
