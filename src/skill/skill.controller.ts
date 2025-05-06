@@ -1,7 +1,7 @@
 import { Controller, Inject, Injectable, UseGuards, UseInterceptors } from "@nestjs/common";
 import { UserUtterance, Data, Handler, Intent, Time, UserId, Command } from "../decorators";
 import { SkillResponse, SkillResponseBuilder } from "src/response-utils";
-import { DocumentFlowApiClient, LLMmodel, Project, Stufftime, Task, Worktypes } from "./skill.service";
+import { DocumentFlowApiClient, LLMmodel, Project, Stufftime, Task, Worktypes, YandexGPTClient } from "./skill.service";
 import { SkillAuthGuard } from "src/guards";
 import { MinutesDto } from "./dto/minutes.dto";
 import { TransformUserUtteranceToMinutesInterceptor } from "src/interceptors";
@@ -23,8 +23,11 @@ export class SkillController {
     private readonly documentFlowApiClient: DocumentFlowApiClient,
     private readonly cache: InMemoryStore<string>,
     private readonly worktypesCache: InMemoryStore<string>,
+    @Inject() private gptClient: YandexGPTClient,
     @Inject('LLM_MODEL') private readonly model: LLMmodel
-  ) { }
+  ) {
+
+  }
 
   @Intent()
   root(): SkillResponse {
@@ -60,17 +63,21 @@ export class SkillController {
     else {
       message = 'У вас нет задач'
     }
-    const skillResponseBuilder: SkillResponseBuilder = new SkillResponseBuilder(message);
+    let skillResponseBuilder: SkillResponseBuilder;
+    if (nextTasks.length) {
+      skillResponseBuilder =  new SkillResponseBuilder(message + `Для продолжения скажите дальше`);
+      skillResponseBuilder.setButton('Дальше', true);
+    }else{
+      skillResponseBuilder =  new SkillResponseBuilder(message);
+    }
+    
     skillResponseBuilder
       .setData({
         tasks: nextTasks,
         increment: 5,
         from: 'tasks'
       })
-    if (nextTasks.length) {
-      skillResponseBuilder.setButton('Дальше', true);
-
-    }
+   
     return skillResponseBuilder
       .setButton('Список задач', true)
       .setButton('Укажи трудозатраты', true)
@@ -87,9 +94,11 @@ export class SkillController {
       if (!data?.tasks?.length) {
         return new SkillResponse('У вас больше нет задач');
       } else {
-        const skillResponseBuilder = new SkillResponseBuilder(data.tasks.slice(0, 5).reduce<string>((text: string, task: any, index) => text + (data.increment + index + 1) + '. ' + task.name + '\n\n', ''));
+        let message = data.tasks.slice(0, 5).reduce<string>((text: string, task: any, index) => text + (data.increment + index + 1) + '. ' + task.name + '\n', '');
+        
         const nextTasks: Task[] = data.tasks.slice(5);
         if (nextTasks.length) {
+          const skillResponseBuilder = new SkillResponseBuilder(message + `Для продолжения скажите дальше`);
           skillResponseBuilder.setButton('Дальше', true);
           skillResponseBuilder.setData({
             tasks: nextTasks,
@@ -97,7 +106,7 @@ export class SkillController {
             from: 'tasks'
           })
         }
-        return skillResponseBuilder
+        return new SkillResponseBuilder(message)
           .setButton('Список задач', true)
           .setButton('Укажи трудозатраты', true)
           .setButton('Отчет', true)
@@ -169,7 +178,7 @@ export class SkillController {
 
     const skillResponseBuilder: SkillResponseBuilder = new SkillResponseBuilder('По какой задаче вы хотите указать трудозатраты?')
       .setNextHandler('task')
-      .setData({ time: UserUtterance.text })
+      .setData({ countOfMinutes: UserUtterance.text })
       .setButton('Отмена', true)
     return skillResponseBuilder.build();
   }
@@ -179,7 +188,6 @@ export class SkillController {
   async task(@UserId() userId: string, @Data() data: any, @UserUtterance() userUtterance: any) {
 
     const tasksObjects: Task[] = await this.documentFlowApiClient.getTasks(userId);
-    const tasks: string = tasksObjects.reduce<string>((text: string, task: Task) => text + `Имя: ${task.name} id: ${task.id} \n\n`, '');
     const taskIdArray: string[] = await this.cache.mget([userUtterance.text]);
     let taskId: string | undefined;
     if (typeof taskIdArray[0] !== 'undefined') {
@@ -191,14 +199,8 @@ export class SkillController {
     }
 
     if (typeof taskId === 'undefined') {
-      const model: LLM = await this.model.getModel();
-      const prompt: string = `
-      У тебя текст распознанный голосом. Определи есть ли задача "${userUtterance.text}" в списке ниже с учетом возможных неточностей распознания голоса
-Если есть, то верни исключительно только id этой задачи и ничего более, если задачи нет верни null и ничего больше.
-      ${tasks}
-      `;
-      const responseFromModel: string = await model.invoke([prompt]);
-      if (responseFromModel == 'null') {
+      const responseFromModel: string | null = await this.gptClient.findItemIdByName(tasksObjects, userUtterance.text);
+      if (!responseFromModel) {
         taskId = undefined;
       } else {
         taskId = responseFromModel;
@@ -234,7 +236,7 @@ export class SkillController {
     const worktypes: Worktypes[] = data.worktypes;
     const worktype: Worktypes | undefined = worktypes.find((worktype: Worktypes) => worktype.name === userUtterance);
     if (typeof worktype !== 'undefined') {
-      data.worktypeId = worktype.id;
+      data.workTypeId = worktype.id;
     } else {
 
       const worktypesIdArray: string[] = await this.worktypesCache.mget([userUtterance.text]);
@@ -246,29 +248,23 @@ export class SkillController {
           this.worktypesCache.mdelete([worktypeId]);
           worktypeId = undefined;
         } else {
-          data.worktypeId = worktypeId;
+          data.workTypeId = worktypeId;
         }
       }
 
       if (typeof worktypeId === 'undefined') {
-        const model: LLM = await this.model.getModel();
-        const worktypesString: string = worktypes.reduce<string>((text: string, worktype: Worktypes) => text + `Имя: ${worktype.name} id: ${worktype.id} \n\n`, '');
-        const responseFromModel: string = await model.invoke([`
-      У тебя текст распознанный голосом. Определи есть ли вид работ"${userUtterance.text}" в списке ниже с учетом возможных неточностей распознания голоса
-Если вид работ есть, то верни исключительно только id и ничего более, если нет верни null и ничего больше. \n\n
-      ${worktypesString}
-      `]);
-        if (responseFromModel == 'null') {
-          data.worktypeId = undefined;
+        const responseFromModel: string | null = await this.gptClient.findItemIdByName(worktypes, userUtterance.text);
+        if (!responseFromModel) {
+          data.workTypeId = undefined;
         } else {
           worktypeId = responseFromModel;
           this.worktypesCache.mset([[userUtterance.text, worktypeId]]);
-          data.worktypeId = worktypeId;
+          data.workTypeId = worktypeId;
         }
       }
 
     }
-    if (typeof data.worktypeId === 'undefined') {
+    if (typeof data.workTypeId === 'undefined') {
       return new SkillResponseBuilder('Не нашла такой вид работ. Попробуйте произнести по другому')
         .setData(data)
         .setNextHandler('worktype')
@@ -285,34 +281,43 @@ export class SkillController {
   @Handler('stafftime')
   async stafftime(@Time() time: Date, @UserId() userId: string, @Data() data: any, @UserUtterance() userUtterance: any) {
 
-    const model: LLM = await this.model.getModel();
-    const prompt = `ты - ассистент для коррекции текстов, распознанных системой голосового ввода. Исправляй исключительно фактические ошибки распознавания, сохраняя исходный стиль и структуру текста. Расставь знаки пунктуации и раздели на предложения. Исправь регистр абривиатур. Особое внимание уделяй:
-1. Техническим терминам в IT-контексте (пример: "ГИД" → "git", "джаваскрипт" → "JavaScript")
-2. Опечаткам в профессиональной лексике ("питон" → "Python", "реакт" → "React")
-3. Контекстно-зависимым заменам ("ветка" → "branch" в git-контексте)
-4. Аббревиатурам ("сцсс" → "SCSS", "эс кью эль" → "SQL")
-Не изменяй:
-- Правильно распознанные слова
-Пример исправления:
-Исходный текст: "Для освоения ГИД нужно сделать коммит в мастер ветку"
-Исправленный: "Для освоения git нужно сделать коммит в master ветку"
-Верни в ответе только исправленный текст и ничего больше.
-Текст для исправления: ${userUtterance.text}`
-    const description: string = await model.invoke([prompt]);
+    const description: string = await this.gptClient.splitIntoSentencesPreserveOriginal(userUtterance.text);
     const stufftime: Stufftime = {
       taskId: data.taskId,
       userId: userId,
-      workTypeId: data.worktypeId,
+      workTypeId: data.workTypeId,
       dateTime: time,
-      countOfMinutes: data.time,
+      countOfMinutes: data.countOfMinutes,
       description: description
     }
-    await this.documentFlowApiClient.addStufftime(stufftime);
-    return new SkillResponseBuilder('Трудозатраты успешно добавлены')
-      .setButton('Список задач', true)
-      .setButton('Укажи трудозатраты', true)
-      .setButton('Отчет', true)
+
+    return new SkillResponseBuilder(`В систему будет добавлен следующий текст: ${description} \nПодтвердить?`)
+      .setButton('Да', true)
+      .setButton('Отмена', true)
+      .setData(stufftime)
+      .setNextHandler('check')
       .build()
+  }
+
+  @UseGuards(SkillAuthGuard)
+  @Handler('check')
+  async check(@Data() data: Stufftime, @UserUtterance() userUtterance: any) {
+
+    data.dateTime = new Date(data.dateTime);
+    if ((userUtterance.text.toLowerCase() == `да`) || (userUtterance.text.toLowerCase() == `Подтвердить`) || (userUtterance.text.toLowerCase() == `Подтвержда`)) {
+      await this.documentFlowApiClient.addStufftime(data);
+      return new SkillResponse('Трудозатраты успешно добавлены');
+    } else {
+      return new SkillResponseBuilder(`Произнесите трудозатраты`)
+        .setButton('Список задач', true)
+        .setButton('Укажи трудозатраты', true)
+        .setButton('Отчет', true)
+        .setData(data)
+        .setNextHandler('stafftime')
+        .build()
+
+    }
+
   }
 
   @Command('отмена')
