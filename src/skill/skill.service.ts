@@ -1,11 +1,11 @@
-import axios, { AxiosInstance, AxiosResponse } from "axios";
+import axios, { AxiosError, AxiosInstance, AxiosResponse } from "axios";
 import config from "../config";
 import { YandexGPT, YandexGPTInputs } from "@langchain/yandex/llms";
 import { LLM } from "@langchain/core/language_models/llms";
 import { CreateIamTokenResponse } from "@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/iam/v1/iam_token_service";
-import { Inject, Injectable, OnModuleDestroy } from "@nestjs/common";
+import { ForbiddenException, Inject, Injectable, OnModuleDestroy, RequestTimeoutException, UnauthorizedException } from "@nestjs/common";
 import * as jose from 'node-jose'
-import { DocumentFlowClientIBSessionException } from "src/exceptions";
+import { DocumentFlowClientIBSessionException, DocumentFlowClientInternalServerErrorException, DocumentFlowClientUnknowException } from "../exceptions";
 import { CookieJar } from 'tough-cookie';
 import { wrapper } from 'axios-cookiejar-support';
 import { Cron, CronExpression } from "@nestjs/schedule";
@@ -36,18 +36,172 @@ export interface Worktypes {
   name: string
 }
 
-@Injectable()
+export interface ErrorResponse {
+  error?: string;
+}
+
+
 export class DocumentFlowApiClient implements OnModuleDestroy {
-
-
   private client: AxiosInstance;
+  private readonly baseUrl = config.baseUrl;
+  private readonly auth = {
+    username: config.authDO.username,
+    password: config.authDO.password
+  };
 
   constructor() {
     const jar = new CookieJar();
-    this.client = wrapper(axios.create({ jar }));
+    this.client = wrapper(
+      axios.create({
+        jar,
+        baseURL: this.baseUrl,
+        auth: this.auth
+      })
+    );
+
+    this.addRequestInterceptors();
+    this.addResponseInterceptors();
   }
 
-public formatDateToYYYYMMDDHHMMSS(date: Date): string {
+  private addRequestInterceptors() {
+    this.client.interceptors.request.use(config => {
+      config.headers.IBSession = 'start';
+      return config;
+    });
+  }
+
+
+  public async onModuleDestroy() {
+    await this.closeSession();
+    console.log('session close');
+  }
+
+  public async closeSession() {
+
+    const response = await this.client.get('tasks', {
+      headers: { IBSession: 'finish' }
+    });
+    return response.data;
+
+  }
+
+  public async checkOverdueTasks(userId: string) {
+    const response = await this.client.get('checkOverdueTasks', {
+      params: { userId }
+    });
+    return response.data.result;
+  }
+
+  public async getTasks(userId: string) {
+    const response = await this.client.get('tasks', {
+      params: { userId }
+    });
+    return response.data;
+  }
+
+  public async getWorktypes(): Promise<Worktypes[]> {
+    const response: AxiosResponse = await this.client.get('worktypes');
+    const worktypes: Worktypes[] = response.data;
+
+    return worktypes.filter(item =>
+      !item.name.includes("(не использовать)")
+    );
+  }
+
+  public async keepAlive() {
+    await this.client.get('tasks');
+  }
+
+  public async getTaskByName(userId: string, name: string): Promise<Task> {
+    const response = await this.client.get('task', {
+      params: { userId, taskName: name }
+    });
+    return response.data;
+  }
+
+  public async addStufftime(stufftime: Stufftime): Promise<void> {
+    const payload = {
+      ...stufftime,
+      dateTime: this.formatDateToYYYYMMDDHHMMSS(stufftime.dateTime)
+    };
+    const response = await this.client.post('stufftime', payload);
+    return response.data;
+  }
+
+  public async getProjectByName(name: string) {
+    const response = await this.client.get('project', {
+      params: { projectName: name }
+    });
+    return response.data;
+  }
+
+  public async getStafftimeByProjectId(projectId: string) {
+    const response = await this.client.get('stufftime', {
+      params: { projectId }
+    });
+    return response.data;
+  }
+
+  public async getStafftimeTodayByUserId(userId: string) {
+    const response = await this.client.get('stufftime', {
+      params: { userId }
+    });
+    return response.data;
+  }
+
+  private addResponseInterceptors() {
+    this.client.interceptors.response.use(
+      response => response,
+      (error: unknown) => this.handleResponseError(error)
+    );
+  }
+
+  private handleResponseError(error: unknown): Promise<never> {
+    if (!axios.isAxiosError(error)) {
+      return Promise.reject(new DocumentFlowClientUnknowException('Unknown error occurred'));
+    }
+
+    if (!error.response) {
+      return Promise.reject(new RequestTimeoutException('Network error occurred'));
+    }
+
+    const responseData = this.parseErrorResponse(error.response.data);
+    const errorMessage = responseData.error ?? 'Unknown error';
+
+    if (this.isSessionError(errorMessage)) {
+      return Promise.reject(new DocumentFlowClientIBSessionException('IBSession header is not set'));
+    }
+
+    return this.handleErrorByStatus(error.response.status, errorMessage);
+  }
+
+  private parseErrorResponse(data: unknown): ErrorResponse {
+
+    return data as ErrorResponse;
+  }
+
+  private isSessionError(message: string): boolean {
+    return message.includes('Не указан заголовок управления сеансами или куки с идентификатором сеанса');
+  }
+
+  private handleErrorByStatus(status: number, message: string): Promise<never> {
+    const exceptionMap: Record<number, Error> = {
+      401: new UnauthorizedException('Authentication required'),
+      403: new ForbiddenException('Access denied'),
+      500: new DocumentFlowClientInternalServerErrorException('Internal server error')
+    }
+
+    return Promise.reject(
+      exceptionMap[status]
+      ?? new DocumentFlowClientUnknowException(`Unexpected error: ${message}`, status)
+    );
+  }
+
+
+
+
+
+  public formatDateToYYYYMMDDHHMMSS(date: Date): string {
     const year = date.getFullYear().toString();
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
@@ -58,167 +212,8 @@ public formatDateToYYYYMMDDHHMMSS(date: Date): string {
     return `${year}${month}${day}${hours}${minutes}${seconds}`;
   }
 
-  async onModuleDestroy() {
-    await this.closeSession();
-    console.log('session close');
-  }
-
-  public async closeSession() {
-
-    try {
-
-      let response = await this.client.get(`${this.baseUrl}tasks`, {
-        auth: this.auth,
-        headers: {
-          IBSession: 'finish'
-        }
-      });
-      return response.data;
-
-    } catch (error) {
-
-      if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
-        console.log('The session was not started');
-      }
-      throw error;
-    }
-  }
-
-
-  private baseUrl: string = config.baseUrl;
-
-  private auth: any = {
-    username: config.authDO.username,
-    password: config.authDO.password
-  }
-
-  public async checkOverdueTasks(userId: string) {
-    try {
-
-      let response = await this.client.get(`${this.baseUrl}checkOverdueTasks?userId=${userId}`, {
-        auth: this.auth,
-        headers: {
-          IBSession: 'start'
-        }
-      });
-      return response.data.result;
-
-    } catch (error) {
-
-      if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
-        throw new DocumentFlowClientIBSessionException(`IBSession header is not set`);
-      } else {
-        throw error;
-      }
-    }
-
-  }
-
-  public async getTasks(userId: string) {
-
-    try {
-
-      let response = await this.client.get(`${this.baseUrl}tasks?userId=${userId}`, {
-        auth: this.auth,
-        headers: {
-          IBSession: 'start'
-        }
-      });
-      return response.data;
-
-    } catch (error) {
-
-      if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
-        throw new DocumentFlowClientIBSessionException(`IBSession header is not set`);
-      }
-    }
-  }
-
-  public async getWorktypes(): Promise<Worktypes[]> {
-
-    try {
-
-      let response = await this.client.get(`${this.baseUrl}worktypes`, {
-        auth: this.auth,
-        headers: {
-          IBSession: 'start'
-        }
-      });
-      return response.data;
-
-    } catch (error) {
-
-      if (error.response.data.includes(`Не указан заголовок управления сеансами или куки с идентификатором сеанса`)) {
-        throw new DocumentFlowClientIBSessionException(`IBSession header is not set`);
-      } else {
-        throw error;
-      }
-
-    }
-  }
-
-  public keepAlive() {
-    this.client.get(`${this.baseUrl}tasks`, {
-      auth: this.auth,
-      headers: {
-        IBSession: 'start'
-      }
-    });
-
-  }
-
-  public async getTaskByName(userId: string, name: string): Promise<Task> {
-    let response: AxiosResponse = await this.client.get(`${this.baseUrl}task?userId=${userId}&taskName=${name}`, {
-      auth: this.auth,
-      headers: {
-        IBSession: 'start'
-      }
-    });
-    return response.data;
-  }
-
-  public async addStufftime(stufftime: Stufftime): Promise<void> {
-    (stufftime as any).dateTime = this.formatDateToYYYYMMDDHHMMSS(stufftime.dateTime);
-    let response: AxiosResponse = await this.client.post(`${this.baseUrl}stufftime`, stufftime, {
-      auth: this.auth,
-      headers: {
-        IBSession: 'start'
-      }
-    });
-    return response.data;
-  }
-
-  public async getProjectByName(name: string) {
-    let response: AxiosResponse = await this.client.get(`${this.baseUrl}project?projectName=${name}`, {
-      auth: this.auth,
-      headers: {
-        IBSession: 'start'
-      }
-    });
-    return response.data;
-  }
-
-  public async getStafftimeByProjectId(projectId: string) {
-    let response: AxiosResponse = await axios.get(`${this.baseUrl}stufftime?projectId=${projectId}`, {
-      auth: this.auth,
-      headers: {
-        IBSession: 'start'
-      }
-    });
-    return response.data;
-  }
-
-  public async getStafftimeTodayByUserId(userId: string) {
-    let response: AxiosResponse = await axios.get(`${this.baseUrl}stufftime/?userId=${userId}`, {
-      auth: this.auth,
-      headers: {
-        IBSession: 'start'
-      }
-    });
-    return response.data;
-  }
-
 }
+
 interface AimTokenProvider {
   getIamTokenRespone(): Promise<CreateIamTokenResponse>;
 }
@@ -341,6 +336,8 @@ export class YandexGPTmodel {
     const options: YandexGPTInputs = {
       folderID: this.folderId,
       modelURI: `gpt://${this.folderId}/${this.modelURI}`,
+      //   modelVersion: `rc`,
+      temperature: 0,
       cache: true,
     }
     if (this.isTokenExpired()) {
@@ -384,11 +381,157 @@ export class KeepAlive {
   ) { }
 
   @Cron(CronExpression.EVERY_MINUTE)
-  runEveryMinute() {
+  async runEveryMinute() {
     try {
-      this.documentFlowApiClient.keepAlive();
+      await this.documentFlowApiClient.keepAlive();
     } catch (error) {
       console.log(error);
     }
+  }
+}
+
+
+interface YandexGPTRequest {
+  modelUri: string;
+  completionOptions: {
+    maxTokens: number;
+    temperature: number;
+  };
+  messages: Array<{
+    role: string;
+    text: string;
+  }>;
+}
+
+interface YandexGPTResponse {
+  result: {
+    alternatives: Array<{
+      message: {
+        text: string;
+      };
+    }>;
+  };
+}
+
+interface BaseEntity {
+  id: string;
+  name: string;
+}
+
+class InvalidUUIDError extends Error {
+
+  constructor(value: string) {
+    super(`Недопустимый UUID: ${value}`);
+    this.name = 'InvalidUUIDError';
+  }
+}
+
+export class YandexGPTClient {
+
+  private readonly baseUrl: string = 'https://llm.api.cloud.yandex.net/foundationModels/v1/completion';
+  private iamTokenResponse: CreateIamTokenResponse;
+  private yandexGptLiteURI: string
+
+  constructor(
+    @Inject('TOKEN_PROVIDER') private readonly iamTokenProvider: AimTokenProvider,
+    @Inject('FOLDER_ID') private readonly folderId: string,
+    @Inject('MODEL_URI') private readonly modelURI: string,
+  ) {
+    this.yandexGptLiteURI = `gpt://${this.folderId}/yandexgpt-lite/rc`;
+  }
+
+  private isTokenExpired(): boolean {
+    if (!this.iamTokenResponse) {
+      return true;
+    }
+    let tokenLifetime;
+    const expiresAt: Date | undefined = this.iamTokenResponse.expiresAt;
+    if (expiresAt) {
+      tokenLifetime = (new Date(expiresAt).getTime() - (Date.now() + 60 * 60 * 1000));
+    } else {
+      tokenLifetime = 0;
+    }
+    return tokenLifetime <= 0;
+  }
+
+  private baseEntitysToText(baseEntitys: BaseEntity[]) {
+
+    return baseEntitys.reduce<string>((text: string, baseEntity: BaseEntity) => text + `Имя: ${baseEntity.name} id: ${baseEntity.id} \n\n`, '');
+
+  }
+
+  async splitIntoSentencesPreserveOriginal(text: string) {
+    const prompt = `Разбей на предложения и расставь запятые не меняя исходный текст `
+    const description: string = await this.run(prompt, text, this.yandexGptLiteURI);
+    return description;
+  }
+
+  async textoMinutes(text: string): Promise<number | null> {
+
+    const systemText: string = `Преобразуй текст в количество минут. Верни только число. Если строку нельзя преобразовать верни null`
+    const userText: string = text;
+    const response: string = await this.run(systemText, userText, this.yandexGptLiteURI);
+    const minutes: number = Number.parseInt(response);
+    return Number.isNaN(minutes) ? null : minutes;
+
+  }
+
+  async findItemIdByName(baseEntitys: BaseEntity[], name: string): Promise<string | null> {
+
+    const systemText: string = `У тебя текст распознанный голосом. Определи есть элемент "${name}" в списке ниже с учетом возможных неточностей распознания голоса\nЕсли элемент есть, то верни исключительно только id этого элемента и ничего более, если нет верни null и ничего больше. Очень важно, в ответе может быть либо id ли значение null и ничего больше.`
+    const userText: string = this.baseEntitysToText(baseEntitys);
+    const id: string | null = await this.run(systemText, userText, this.yandexGptLiteURI);
+    if (!id || id.toLowerCase() === 'null') return null;
+    if (!this.isValidUUID(id)) {
+      throw new InvalidUUIDError(id);
+    }
+    return id;
+  }
+
+  async run(systemText: string, userText: string, modelURI: string): Promise<string> {
+    const requestBody: YandexGPTRequest = {
+      modelUri: modelURI,
+      completionOptions: {
+        maxTokens: 500,
+        temperature: 0
+      },
+      messages: [
+        {
+          role: "system",
+          text: systemText
+        },
+        {
+          role: "user",
+          text: userText
+        }
+      ]
+    };
+
+    try {
+      if (this.isTokenExpired()) {
+        this.iamTokenResponse = await this.iamTokenProvider.getIamTokenRespone();
+      }
+      const response: AxiosResponse<YandexGPTResponse> = await axios.post(this.baseUrl,
+        requestBody,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.iamTokenResponse.iamToken}`,
+            'x-folder-id': this.folderId,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      const resultText = response.data.result.alternatives[0]?.message.text.trim();
+      return resultText;
+    } catch (error) {
+      console.error('Error making request to YandexGPT:', error);
+      throw new Error('Failed to process request with YandexGPT');
+    }
+  }
+
+  private isValidUUID(uuid: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
   }
 }

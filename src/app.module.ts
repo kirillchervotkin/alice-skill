@@ -4,7 +4,7 @@ import { SkillController } from './skill/skill.controller';
 import { TokenController, AuthController } from './token/token.controller';
 import { IntentMiddleware } from './middlewares';
 import { AuthenticationService } from './token/token.service';
-import { AItransform, DocumentFlowApiClient, KeepAlive, YandexAimTokenProvider, YandexGPTmodel, YandexJWTTokenProvider } from './skill/skill.service';
+import { AItransform, DocumentFlowApiClient, KeepAlive, YandexAimTokenProvider, YandexGPTClient, YandexGPTmodel, YandexJWTTokenProvider } from './skill/skill.service';
 import config from './config';
 import { GlobalExceptionFilter } from './exceptionFilters';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -27,6 +27,7 @@ const FIVE_YEARS = '157766400s';
     AuthenticationService,
     DocumentFlowApiClient,
     AItransform,
+    YandexGPTClient,
     InMemoryStore<string>,
      {
       provide: DocumentFlowApiClient, 

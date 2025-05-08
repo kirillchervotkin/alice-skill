@@ -55,7 +55,7 @@ export class AuthController {
     }
 
     @Post()
-    async authUser(@Res() res: Response, @Query() authDto: AuthDto, @Body() authFormDto: AuthFormDto) {
+    async authUser(@Res() res: Response, @Query() authDto: AuthDto, @Body() authFormDto: any) {
 
         const authForm = new AuthFormDto();
         Object.assign(authForm, authFormDto);

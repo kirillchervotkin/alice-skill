@@ -1,6 +1,6 @@
 import { Controller, Inject, Injectable, UseGuards, UseInterceptors } from "@nestjs/common";
 import { UserUtterance, Data, Handler, Intent, Time, UserId, Command } from "../decorators";
-import { SkillResponse, SkillResponseBuilder } from "src/response-utils";
+import { Button, SkillResponse, SkillResponseBuilder } from "src/response-utils";
 import { DocumentFlowApiClient, LLMmodel, Project, Stufftime, Task, Worktypes, YandexGPTClient } from "./skill.service";
 import { SkillAuthGuard } from "src/guards";
 import { MinutesDto } from "./dto/minutes.dto";
@@ -15,9 +15,24 @@ interface NextItems {
   from: string
 }
 
+enum TaskSource {
+  TASKS = 'tasks',
+  STUFFTIME = 'stufftime'
+}
+
 @Injectable()
 @Controller()
 export class SkillController {
+
+  // Константы и перечисления
+  private readonly TASKS_PER_PAGE: number = 5;
+  private readonly commonButtons: Button[] = [
+    { title: 'Список задач', hide: true },
+    { title: 'Укажи трудозатраты', hide: true },
+    { title: 'Отчет', hide: true },
+    { title: 'Количество отработанных часов', hide: true }
+  ];
+
 
   constructor(
     private readonly documentFlowApiClient: DocumentFlowApiClient,
@@ -65,19 +80,19 @@ export class SkillController {
     }
     let skillResponseBuilder: SkillResponseBuilder;
     if (nextTasks.length) {
-      skillResponseBuilder =  new SkillResponseBuilder(message + `Для продолжения скажите дальше`);
+      skillResponseBuilder = new SkillResponseBuilder(message + `Для продолжения скажите дальше`);
       skillResponseBuilder.setButton('Дальше', true);
-    }else{
-      skillResponseBuilder =  new SkillResponseBuilder(message);
+    } else {
+      skillResponseBuilder = new SkillResponseBuilder(message);
     }
-    
+
     skillResponseBuilder
       .setData({
         tasks: nextTasks,
         increment: 5,
         from: 'tasks'
       })
-   
+
     return skillResponseBuilder
       .setButton('Список задач', true)
       .setButton('Укажи трудозатраты', true)
@@ -85,72 +100,103 @@ export class SkillController {
       .build();
   }
 
+  private buildDefaultResponse(): SkillResponse {
+    return new SkillResponse(`Для продолжения назовите команду`);
+  }
+
 
   @UseGuards(SkillAuthGuard)
   @Command('Дальше')
   nextTasks(@Data() data: NextItems | undefined): SkillResponse {
-    if (data?.from == 'tasks') {
+    return this.handleNextItems(data);
+  }
 
-      if (!data?.tasks?.length) {
-        return new SkillResponse('У вас больше нет задач');
-      } else {
-        let message = data.tasks.slice(0, 5).reduce<string>((text: string, task: any, index) => text + (data.increment + index + 1) + '. ' + task.name + '\n', '');
-        
-        const nextTasks: Task[] = data.tasks.slice(5);
-        if (nextTasks.length) {
-          const skillResponseBuilder = new SkillResponseBuilder(message + `Для продолжения скажите дальше`);
-          skillResponseBuilder.setButton('Дальше', true);
-          skillResponseBuilder.setData({
-            tasks: nextTasks,
-            increment: data.increment + 5,
-            from: 'tasks'
-          })
-        }
-        return new SkillResponseBuilder(message)
-          .setButton('Список задач', true)
-          .setButton('Укажи трудозатраты', true)
-          .setButton('Отчет', true)
-          .setButton('Количество отработанных часов', true)
-          .build();
-      }
-    } else if (data?.from == 'stufftime') {
+  private handleNextItems(data?: NextItems): SkillResponse {
+    if (!data?.from) {
+      return this.buildDefaultResponse();
+    }
 
-      if (!(data?.stufftime?.length)) {
-        return new SkillResponseBuilder(' вас больше нет записей о трудозатратах')
-          .setButton('Список задач', true)
-          .setButton('Укажи трудозатраты', true)
-          .setButton('Отчет', true)
-          .build();
-
-      } else {
-        const nextStufftime: Stufftime[] = data.stufftime.slice(1);
-        const time = Number.parseInt(data.stufftime[0].countOfMinutes) / 60;
-        const description: string = data.stufftime[0].description;
-        const text = `**Время**: ${time} ч. \n**Трудоемкость:**\n${description}`;
-        const skillResponseBuilder: SkillResponseBuilder = new SkillResponseBuilder(text);
-        if (nextStufftime.length) {
-          skillResponseBuilder.setButton('Дальше', true);
-          skillResponseBuilder.setData({
-            stufftime: nextStufftime,
-            from: 'stufftime'
-          })
-        }
-        return skillResponseBuilder
-          .setButton('Список задач', true)
-          .setButton('Укажи трудозатраты', true)
-          .setButton('Отчет', true)
-          .build();
-      }
-    } else {
-      return new SkillResponseBuilder('Произнесите команду')
-        .setButton('Список задач', true)
-        .setButton('Укажи трудозатраты', true)
-        .setButton('Отчет', true)
-        .setButton('Количество отработанных часов', true)
-        .build();
-
+    switch (data.from) {
+      case TaskSource.TASKS:
+        return this.handleTasks(data);
+      case TaskSource.STUFFTIME:
+        return this.handleStufftime(data);
+      default:
+        return this.buildDefaultResponse();
     }
   }
+
+  private handleTasks(data: NextItems): SkillResponse {
+    if (!data.tasks?.length) {
+      return new SkillResponse('У вас больше нет задач');
+    }
+
+    const visibleTasks = data.tasks.slice(0, this.TASKS_PER_PAGE);
+    let message = this.buildTaskListMessage(visibleTasks, data.increment);
+    const nextTasks = data.tasks.slice(this.TASKS_PER_PAGE);
+    if (!nextTasks.length) {
+      message = message + `\n\n Я перечислила все задачи которые у вас есть. Для продолжения назовите любую команду`;
+    }
+
+    return this.buildTaskResponse(message, nextTasks, data.increment);
+  }
+
+  private handleStufftime(data: NextItems): SkillResponse {
+    if (!data.stufftime?.length) {
+      return this.buildDefaultResponse();
+    }
+
+    const [currentItem, ...remainingItems] = data.stufftime;
+    const message = this.buildStufftimeMessage(currentItem);
+
+    return this.buildStufftimeResponse(message, remainingItems);
+  }
+
+  // Вспомогательные методы
+  private buildTaskListMessage(tasks: Task[], increment: number = 0): string {
+    return tasks.reduce((text, task, index) =>
+      text + `${increment + index + 1}. ${task.name}\n`, '');
+  }
+
+  private buildTaskResponse(message: string, nextTasks: Task[], increment: number): SkillResponse {
+    const builder = new SkillResponseBuilder(message)
+      .setButtons(this.commonButtons);
+
+    if (nextTasks.length) {
+      builder
+        .setPrependButton('Дальше', true)
+        .setData({
+          tasks: nextTasks,
+          increment: increment + this.TASKS_PER_PAGE,
+          from: TaskSource.TASKS
+        })
+    }
+
+    return builder.build();
+  }
+
+  private buildStufftimeMessage(item: Stufftime): string {
+    const time = Number.parseInt(item.countOfMinutes) / 60;
+    return `**Время**: ${time} ч. \n**Трудоемкость:**\n${item.description}`;
+  }
+
+  private buildStufftimeResponse(message: string, remainingItems: Stufftime[]): SkillResponse {
+    const builder = new SkillResponseBuilder(message)
+      .setButtons(this.commonButtons);
+
+    if (remainingItems.length) {
+      builder
+        .setButton('Дальше', true)
+        .setData({
+          stufftime: remainingItems,
+          from: TaskSource.STUFFTIME
+        });
+    }
+
+    return builder.build();
+  }
+
+
 
   @UseGuards(SkillAuthGuard)
   @Intent('addStufftime')
@@ -185,96 +231,107 @@ export class SkillController {
 
   @UseGuards(SkillAuthGuard)
   @Handler('task')
-  async task(@UserId() userId: string, @Data() data: any, @UserUtterance() userUtterance: any) {
-
+  async task(
+    @UserId() userId: string,
+    @Data() data: any,
+    @UserUtterance() userUtterance: any
+  ): Promise<SkillResponse> {
+    // Получаем список задач пользователя
     const tasksObjects: Task[] = await this.documentFlowApiClient.getTasks(userId);
-    const taskIdArray: string[] = await this.cache.mget([userUtterance.text]);
+
+    // Проверяем кэш на наличие taskId
+    const cachedTaskId = (await this.cache.mget([userUtterance.text]))[0];
     let taskId: string | undefined;
-    if (typeof taskIdArray[0] !== 'undefined') {
-      taskId = taskIdArray[0];
-      if (!tasksObjects.filter((item: Task) => item.id == taskId).length) {
-        this.cache.mdelete([taskId]);
-        taskId = undefined;
+
+    // Проверяем валидность cachedTaskId
+    if (cachedTaskId) {
+      const taskExists = tasksObjects.some(task => task.id === cachedTaskId);
+      if (taskExists) {
+        taskId = cachedTaskId;
+      } else {
+        await this.cache.mdelete([cachedTaskId]);
       }
     }
 
-    if (typeof taskId === 'undefined') {
-      const responseFromModel: string | null = await this.gptClient.findItemIdByName(tasksObjects, userUtterance.text);
-      if (!responseFromModel) {
-        taskId = undefined;
-      } else {
+    // Если taskId не найден, запрашиваем у модели
+    if (!taskId) {
+      const responseFromModel = await this.gptClient.findItemIdByName(tasksObjects, userUtterance.text);
+      if (responseFromModel) {
         taskId = responseFromModel;
-        this.cache.mset([[userUtterance.text, taskId]])
+        await this.cache.mset([[userUtterance.text, taskId]]);
       }
     }
+
+    // Формируем ответ
     let response: SkillResponseBuilder;
 
-    if (typeof taskId === 'undefined') {
-      response = new SkillResponseBuilder('Не нашла такой задачи. Попробуйте произнести по другому')
-        .setNextHandler('task')
+    if (!taskId) {
+      response = new SkillResponseBuilder('Не нашла такой задачи. Попробуйте произнести по-другому')
+        .setNextHandler('task');
     } else {
       const worktypes: Worktypes[] = await this.documentFlowApiClient.getWorktypes();
       data.worktypes = worktypes;
+
       response = new SkillResponseBuilder('Какой вид работы у трудоёмкости?')
-        .setNextHandler('worktype')
+        .setNextHandler('worktype');
+
       worktypes.forEach(item => response.setButton(item.name, true));
     }
 
     data.taskId = taskId;
 
-
     return response
       .setData(data)
       .build();
-
-
   }
 
+  // Защищаем обработчик с помощью SkillAuthGuard для проверки прав доступа
   @UseGuards(SkillAuthGuard)
+  // Обработчик для определения типа работ по ключевому слову 'worktype'
   @Handler('worktype')
   async worktype(@Data() data: any, @UserUtterance() userUtterance: any): Promise<SkillResponse> {
     const worktypes: Worktypes[] = data.worktypes;
-    const worktype: Worktypes | undefined = worktypes.find((worktype: Worktypes) => worktype.name === userUtterance);
-    if (typeof worktype !== 'undefined') {
-      data.workTypeId = worktype.id;
+
+    // Поиск точного совпадения по названию работы
+    const worktype = worktypes.find(w => w.name === userUtterance.text);
+
+    if (worktype) {
+      data.workTypeId = worktype.id; // Сохраняем найденный ID
     } else {
+      // Проверка кэша для ранее сохраненных соответствий 
+      const [cachedId] = await this.worktypesCache.mget([userUtterance.text]);
 
-      const worktypesIdArray: string[] = await this.worktypesCache.mget([userUtterance.text]);
-      let worktypeId: string | undefined;
+      if (cachedId && worktypes.some(w => w.id === cachedId)) {
+        data.workTypeId = cachedId; // Используем валидный ID из кэша
+      } else {
+        if (cachedId) {
+          // Удаляем невалидную запись из кэша
+          await this.worktypesCache.mdelete([cachedId]);
+        }
 
-      if (typeof worktypesIdArray[0] !== 'undefined') {
-        worktypeId = worktypesIdArray[0];
-        if (!worktypes.some((worktype: Worktypes) => worktype.id === worktypeId)) {
-          this.worktypesCache.mdelete([worktypeId]);
-          worktypeId = undefined;
-        } else {
-          data.workTypeId = worktypeId;
+        // Запрос к AI-модели для определения ID по названию 
+        const responseFromModel = await this.gptClient.findItemIdByName(worktypes, userUtterance.text);
+        data.workTypeId = responseFromModel || undefined;
+
+        if (responseFromModel) {
+          // Кэшируем новое соответствие 
+          await this.worktypesCache.mset([[userUtterance.text, responseFromModel]]);
         }
       }
-
-      if (typeof worktypeId === 'undefined') {
-        const responseFromModel: string | null = await this.gptClient.findItemIdByName(worktypes, userUtterance.text);
-        if (!responseFromModel) {
-          data.workTypeId = undefined;
-        } else {
-          worktypeId = responseFromModel;
-          this.worktypesCache.mset([[userUtterance.text, worktypeId]]);
-          data.workTypeId = worktypeId;
-        }
-      }
-
     }
-    if (typeof data.workTypeId === 'undefined') {
-      return new SkillResponseBuilder('Не нашла такой вид работ. Попробуйте произнести по другому')
+
+    // Обработка случая, когда ID не найден
+    if (!data.workTypeId) {
+      return new SkillResponseBuilder('Не нашла такой вид работ. Попробуйте произнести по-другому')
         .setData(data)
-        .setNextHandler('worktype')
-        .build();
-    } else {
-      return new SkillResponseBuilder('Произнесите трудозатраты')
-        .setData(data)
-        .setNextHandler('stafftime')
+        .setNextHandler('worktype') // Повторный вызов того же обработчика
         .build();
     }
+
+    return new SkillResponseBuilder('Произнесите трудозатраты')
+      .setData(data)
+      .setNextHandler('stafftime')
+      .build();
   }
 
   @UseGuards(SkillAuthGuard)

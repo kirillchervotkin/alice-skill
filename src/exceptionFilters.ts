@@ -49,7 +49,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: HttpException, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
-    const nextHandler: string = response.req.body.state.session.nextHandler;
+    const nextHandler: string = response.req.body.state?.session?.nextHandler;
     this.logger.error(exception.name + ' ' + exception.message);
     response.status(HttpStatus.OK).json(
       new SkillResponseBuilder('Во мне что-то сломалось, надеюсь меня скоро починять')

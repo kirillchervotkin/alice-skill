@@ -38,7 +38,8 @@
     "node-jose": "^2.2.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
-    "tough-cookie": "^5.1.2"
+    "tough-cookie": "^5.1.2",
+    "zod": "^3.24.4"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
