@@ -42,7 +42,7 @@ export const Handler = (handlerId: string) => {
         UseFilters(SkillAccessTokenExceptionFilter, BadRequestExceptionFilter),
         UseInterceptors(SkillPayloadInterceptor),
         UseFilters(SkillAccessTokenExceptionFilter),
-        Post(handlerId),
+        Post(`NextHandler${handlerId}`),
         UseFilters(SkillAccessTokenExceptionFilter)
     )
 }

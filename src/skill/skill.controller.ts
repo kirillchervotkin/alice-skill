@@ -1,4 +1,4 @@
-import { Controller, Inject, Injectable, UseGuards, UseInterceptors } from "@nestjs/common";
+import { Controller, Inject, Injectable, Post, UseGuards, UseInterceptors } from "@nestjs/common";
 import { UserUtterance, Data, Handler, Intent, Time, UserId, Command } from "../decorators";
 import { Button, SkillResponse, SkillResponseBuilder } from "src/response-utils";
 import { DocumentFlowApiClient, LLMmodel, Project, Stufftime, Task, Worktypes, YandexGPTClient } from "./skill.service";
@@ -56,7 +56,7 @@ export class SkillController {
 
   }
 
-  @Command('unknow')
+  @Post('unknow')
   unknow(): SkillResponse {
 
     return new SkillResponse('Не смогла распознать команду, попробуйте произнести по другому');

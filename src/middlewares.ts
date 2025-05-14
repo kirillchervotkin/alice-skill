@@ -243,9 +243,8 @@ export class IntentMiddleware implements NestMiddleware {
 
         if (matchedIntents.length) return `/${matchedIntents.pop()}`;
         if (routes.commands.includes(command)) return `/command${encodeURIComponent(command)}`;
-        if (nextHandler) return `/${nextHandler}`;
-        if (command) return '/command-unknown';
-
+        if (nextHandler) return `/NextHandler${nextHandler}`;
+        if(command) return '/unknow';
         return '/';
     }
 }
