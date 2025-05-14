@@ -106,8 +106,8 @@ export class SkillController {
 
 
   @UseGuards(SkillAuthGuard)
-  @Command('Дальше')
-  nextTasks(@Data() data: NextItems | undefined): SkillResponse {
+  @Intent('Next')
+  nextTasks(@Data() data: NextItems ): SkillResponse {
     return this.handleNextItems(data);
   }
 
@@ -431,7 +431,7 @@ export class SkillController {
     return new SkillResponse(text);
   }
 
-  @Command('Отчет')
+  @Intent('Report')
   @UseGuards(SkillAuthGuard)
   async report(@UserId() userId: string) {
 
@@ -467,7 +467,7 @@ export class SkillController {
 
   }
 
-  @Command('Количество отработанных часов')
+  @Intent('Time')
   @UseGuards(SkillAuthGuard)
   async countOfMinutes(@UserId() userId: string) {
 
