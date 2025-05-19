@@ -487,4 +487,16 @@ export class SkillController {
 
   }
 
+  @Intent('Help')
+  @UseGuards(SkillAuthGuard)
+  async help(): Promise<SkillResponse> {
+    return new SkillResponseBuilder(
+      `Для указания трудозатрат произнесите команду: укажи трудозатраты
+       \nДля получения списка задач произнесите команду: список задач
+       \nДля получения количества часов отработанных за день произнесите команду: количество отработанных часов
+       \nДля получения отчета по трудозатратам произнесите команду: отчет`)
+      .setButtons(this.commonButtons)
+      .build();
+  }
+
 }
