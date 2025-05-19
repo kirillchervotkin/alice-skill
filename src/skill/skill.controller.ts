@@ -204,7 +204,7 @@ export class SkillController {
 
   @UseGuards(SkillAuthGuard)
   @Intent('addStufftime')
-  async addStufftime(@UserId() userId: string) {
+  async addStufftime(@UserId() userId: string): Promise<SkillResponse> {
     const hasOverdueTasks: boolean = await this.documentFlowApiClient.checkOverdueTasks(userId);
     if (hasOverdueTasks) {
       return new SkillResponse('У вас есть просроченные задачи. Для указания трудозатрат вам необходимо запросить продление срока');
@@ -224,7 +224,7 @@ export class SkillController {
   @UseInterceptors(TransformUserUtteranceToMinutesInterceptor)
   @UseGuards(SkillAuthGuard)
   @Handler('time')
-  async time(@UserId() userId: string, @UserUtterance() UserUtterance: MinutesDto) {
+  async time(@UserId() userId: string, @UserUtterance() UserUtterance: MinutesDto): Promise<SkillResponse> {
 
     const skillResponseBuilder: SkillResponseBuilder = new SkillResponseBuilder('По какой задаче вы хотите указать трудозатраты?')
       .setNextHandler('task')
@@ -340,7 +340,7 @@ export class SkillController {
 
   @UseGuards(SkillAuthGuard)
   @Handler('stafftime')
-  async stafftime(@Time() time: Date, @UserId() userId: string, @Data() data: any, @UserUtterance() userUtterance: any) {
+  async stafftime(@Time() time: Date, @UserId() userId: string, @Data() data: any, @UserUtterance() userUtterance: any): Promise<SkillResponse> {
 
     const description: string = await this.gptClient.splitIntoSentencesPreserveOriginal(userUtterance.text);
     const stufftime: Stufftime = {
@@ -362,7 +362,7 @@ export class SkillController {
 
   @UseGuards(SkillAuthGuard)
   @Handler('check')
-  async check(@Data() data: Stufftime, @UserUtterance() userUtterance: any) {
+  async check(@Data() data: Stufftime, @UserUtterance() userUtterance: any): Promise<SkillResponse> {
 
     data.dateTime = new Date(data.dateTime);
     if ((userUtterance.text.toLowerCase() == `да`) || (userUtterance.text.toLowerCase() == `Подтвердить`) || (userUtterance.text.toLowerCase() == `Подтвержда`)) {
@@ -381,7 +381,7 @@ export class SkillController {
   }
 
   @Command('отмена')
-  cancel() {
+  cancel(): SkillResponse {
     return new SkillResponseBuilder('Для продолжения произнесите любую команду')
       .setButton('Список задач', true)
       .setButton('Укажи трудозатраты', true)
@@ -399,7 +399,7 @@ export class SkillController {
 
   @Command('трудозатраты по проекту')
   @UseGuards(SkillAuthGuard)
-  stafftimeByProject() {
+  stafftimeByProject(): SkillResponse {
     return new SkillResponseBuilder('По какому проекту вы хотите узнать трудозатраты?')
       .setNextHandler('project')
       .build()
@@ -407,7 +407,7 @@ export class SkillController {
 
   @Handler('project')
   @UseGuards(SkillAuthGuard)
-  async project(@UserUtterance() UserUtterance: any) {
+  async project(@UserUtterance() UserUtterance: any): Promise<SkillResponse> {
     const project: Project = await this.documentFlowApiClient.getProjectByName(UserUtterance.text);
     const stafftimeObjects: any[] = await this.documentFlowApiClient.getStafftimeByProjectId(project.id);
     let responseString: string = '';
@@ -424,7 +424,7 @@ export class SkillController {
 
   @Handler('projectName')
   @UseGuards(SkillAuthGuard)
-  async projectName(@UserId() UserId: string, @Data() data: any, @UserUtterance() UserUtterance: any) {
+  async projectName(@UserId() UserId: string, @Data() data: any, @UserUtterance() UserUtterance: any): Promise<SkillResponse> {
     const model: LLM = await this.model.getModel();
 
     const text: string = await model.invoke([`У тебя список трудозатрат по проекту. Найди краткий ответ на вопрос ${UserUtterance.text} ниже в списке:\n ${data.stufftimes}`]);
@@ -433,7 +433,7 @@ export class SkillController {
 
   @Intent('Report')
   @UseGuards(SkillAuthGuard)
-  async report(@UserId() userId: string) {
+  async report(@UserId() userId: string): Promise<SkillResponse> {
 
     const response = (await this.documentFlowApiClient.getStafftimeTodayByUserId(userId))
     let stafftime: Stufftime[];
@@ -466,7 +466,7 @@ export class SkillController {
 
   @Intent('Time')
   @UseGuards(SkillAuthGuard)
-  async countOfMinutes(@UserId() userId: string) {
+  async countOfMinutes(@UserId() userId: string): Promise<SkillResponse> {
 
     const response = (await this.documentFlowApiClient.getStafftimeTodayByUserId(userId))
     let stafftime: Stufftime[];
