@@ -48,15 +48,19 @@ export class SkillController {
 
   @Intent()
   root(): SkillResponse {
+    const message: string = `
+    Добро пожаловать в навык АйТи План.
+    Произнесите одну из следующих команд:
+    
+    Список задач
+    Укажи трудозатраты
+    Отчет
+    Количество отработанных часов
+    Помощь
+    Что ты умеешь
+`.replace(/^ {4}/gm, '').trim();
 
-    return new SkillResponseBuilder(`Добро пожаловать в навык АйТи План.
-      Произнесите одну из следующих команд:
-      \nСписок задач
-      Укажи трудозатраты
-      Отчет
-      Количество отработанных часов
-      Помощь
-      Что ты умеешь`)
+    return new SkillResponseBuilder(message)
       .setButtons(this.commonButtons)
       .build();
 
@@ -111,7 +115,7 @@ export class SkillController {
 
   @UseGuards(SkillAuthGuard)
   @Intent('Next')
-  nextTasks(@Data() data: NextItems ): SkillResponse {
+  nextTasks(@Data() data: NextItems): SkillResponse {
     return this.handleNextItems(data);
   }
 
