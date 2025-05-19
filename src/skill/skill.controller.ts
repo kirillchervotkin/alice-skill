@@ -499,4 +499,12 @@ export class SkillController {
       .build();
   }
 
+  @Intent('About')
+  @UseGuards(SkillAuthGuard)
+  async about(): Promise<SkillResponse> {
+    return new SkillResponseBuilder(`Навык позволяет управлять трудозатратами в системе документооборота компании Айти План`)
+      .setButtons(this.commonButtons)
+      .build();
+  }
+
 }
