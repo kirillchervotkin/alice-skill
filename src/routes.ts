@@ -1,7 +1,17 @@
 export const routes: any = {
     intents: [
-        'getTasks'
+        'getTasks',
+        'addStufftime',
+        'projectName',
+        'Time',
+        'Report',
+        'Next',
+        'Help',
+        'About'
     ],
     commands: [
-        'укажи трудозатраты']
+        'спасибо',
+        'отмена',
+        'трудозатраты по проекту',
+    ]
 }
