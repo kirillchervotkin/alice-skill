@@ -30,7 +30,9 @@ export class SkillController {
     { title: 'Список задач', hide: true },
     { title: 'Укажи трудозатраты', hide: true },
     { title: 'Отчет', hide: true },
-    { title: 'Количество отработанных часов', hide: true }
+    { title: 'Количество отработанных часов', hide: true },
+    { title: 'Помощь', hide: true },
+    { title: 'Что ты умеешь', hide: true }
   ];
 
 
