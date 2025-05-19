@@ -12,14 +12,11 @@ export const UserId = createParamDecorator((data: any, ctx: ExecutionContext): s
     }
 });
 
-export const Data = createParamDecorator((data: any, ctx: ExecutionContext): unknown | null => {
+
+export const Data = createParamDecorator((_, ctx: ExecutionContext): unknown => {
     const request = ctx.switchToHttp().getRequest();
-    const dataOfSession: unknown = request.body.state.session.data;
-    if (!dataOfSession) {
-        return null;
-    } else {
-        return dataOfSession;
-    }
+    const sessionData: unknown = request.body?.state?.session?.data ?? {};
+    return sessionData;
 });
 
 export const UserUtterance = createParamDecorator((data: any, ctx: ExecutionContext): any => {
