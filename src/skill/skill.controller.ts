@@ -49,12 +49,16 @@ export class SkillController {
   @Intent()
   root(): SkillResponse {
 
-    return new SkillResponseBuilder(`Добро пожаловать в навык АйТи План.\nПроизнесите одну из следующих команд:\n\nСписок задач\nУкажи трудозатраты\nОтчет\n`)
-      .setButton('Список задач', true)
-      .setButton('Укажи трудозатраты', true)
-      .setButton('Отчет', true)
-      .setButton('Количество отработанных часов', true)
-      .build()
+    return new SkillResponseBuilder(`Добро пожаловать в навык АйТи План.
+      Произнесите одну из следующих команд:
+      \nСписок задач
+      Укажи трудозатраты
+      Отчет
+      Количество отработанных часов
+      Помощь
+      Что ты умеешь`)
+      .setButtons(this.commonButtons)
+      .build();
 
   }
 
@@ -96,9 +100,7 @@ export class SkillController {
       })
 
     return skillResponseBuilder
-      .setButton('Список задач', true)
-      .setButton('Укажи трудозатраты', true)
-      .setButton('Отчет', true)
+      .setButtons(this.commonButtons)
       .build();
   }
 
@@ -365,12 +367,11 @@ export class SkillController {
     data.dateTime = new Date(data.dateTime);
     if ((userUtterance.text.toLowerCase() == `да`) || (userUtterance.text.toLowerCase() == `Подтвердить`) || (userUtterance.text.toLowerCase() == `Подтвержда`)) {
       await this.documentFlowApiClient.addStufftime(data);
-      return new SkillResponse('Трудозатраты успешно добавлены');
+      return new SkillResponseBuilder('Трудозатраты успешно добавлены')
+        .setButtons(this.commonButtons)
+        .build();
     } else {
       return new SkillResponseBuilder(`Произнесите трудозатраты`)
-        .setButton('Список задач', true)
-        .setButton('Укажи трудозатраты', true)
-        .setButton('Отчет', true)
         .setData(data)
         .setNextHandler('stafftime')
         .build()
@@ -390,12 +391,9 @@ export class SkillController {
   }
 
   @Command('спасибо')
-  thanks() {
+  thanks(): SkillResponse {
     return new SkillResponseBuilder('Всегда рада помочь. Для продолжения назовите команду')
-      .setButton('Список задач', true)
-      .setButton('Укажи трудозатраты', true)
-      .setButton('Отчет', true)
-      .setButton('Количество отработанных часов', true)
+      .setButtons(this.commonButtons)
       .build();
   }
 
@@ -457,10 +455,7 @@ export class SkillController {
       skillResponseBuilder.setButton('Дальше', true);
     }
     skillResponseBuilder
-      .setButton('Список задач', true)
-      .setButton('Укажи трудозатраты', true)
-      .setButton('Отчет', true)
-      .setButton('Количество отработанных часов', true)
+      .setButtons(this.commonButtons)
       .setData({
         stufftime: stafftime.slice(1),
         from: 'stufftime'
