@@ -205,6 +205,10 @@ export class IntentMiddleware implements NestMiddleware {
 
     use(req: Request, res: Response, next: NextFunction) {
         try {
+            if (req.body?.request?.original_utterance === 'ping') {
+                this.logger.log('Received ping request');
+                return res.status(200).json({ text: '' }); 
+            }
             const validatedRequest: AliceRequest<NextHandler> = this.validateRequest(req.body);
             req.url = this.determineRoute(validatedRequest);
             this.logRequest(res);
