@@ -492,7 +492,6 @@ export class SkillController {
   }
 
   @Intent('Help')
-  @UseGuards(SkillAuthGuard)
   async help(): Promise<SkillResponse> {
     return new SkillResponseBuilder(
       `Для указания трудозатрат произнесите команду: укажи трудозатраты
@@ -504,7 +503,6 @@ export class SkillController {
   }
 
   @Intent('About')
-  @UseGuards(SkillAuthGuard)
   async about(): Promise<SkillResponse> {
     return new SkillResponseBuilder(`Навык позволяет управлять трудозатратами в системе документооборота компании Айти План`)
       .setButtons(this.commonButtons)
